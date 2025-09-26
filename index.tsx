@@ -1,13 +1,9 @@
-/* tslint:disable */
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
 
-import {GoogleGenAI, LiveServerMessage, Modality, Session} from '@google/genai';
-import {LitElement, css, html} from 'lit';
-import {customElement, state} from 'lit/decorators.js';
-import {createBlob, decode, decodeAudioData} from './utils';
+
+import { GoogleGenAI, LiveServerMessage, Modality, Session } from '@google/genai';
+import { LitElement, css, html } from 'lit';
+import { customElement, state } from 'lit/decorators.js';
+import { createBlob, decode, decodeAudioData } from './utils';
 import './visual-3d';
 
 @customElement('gdm-live-audio')
@@ -19,9 +15,9 @@ export class GdmLiveAudio extends LitElement {
   private client: GoogleGenAI;
   private session: Session;
   private inputAudioContext = new (window.AudioContext ||
-    window.webkitAudioContext)({sampleRate: 16000});
+    (window as any).webkitAudioContext)({ sampleRate: 16000 });
   private outputAudioContext = new (window.AudioContext ||
-    window.webkitAudioContext)({sampleRate: 24000});
+    (window as any).webkitAudioContext)({ sampleRate: 24000 });
   @state() inputNode = this.inputAudioContext.createGain();
   @state() outputNode = this.outputAudioContext.createGain();
   private nextStartTime = 0;
@@ -85,6 +81,8 @@ export class GdmLiveAudio extends LitElement {
     this.nextStartTime = this.outputAudioContext.currentTime;
   }
 
+
+
   private async initClient() {
     this.initAudio();
 
@@ -103,47 +101,63 @@ export class GdmLiveAudio extends LitElement {
     try {
       this.session = await this.client.live.connect({
         model: model,
+
         callbacks: {
           onopen: () => {
             this.updateStatus('Opened');
           },
           onmessage: async (message: LiveServerMessage) => {
-            const audio =
-              message.serverContent?.modelTurn?.parts[0]?.inlineData;
+            try {
+              console.log("Message received:", message);
 
-            if (audio) {
-              this.nextStartTime = Math.max(
-                this.nextStartTime,
-                this.outputAudioContext.currentTime,
-              );
+              const parts = message.serverContent?.modelTurn?.parts || [];
 
-              const audioBuffer = await decodeAudioData(
-                decode(audio.data),
-                this.outputAudioContext,
-                24000,
-                1,
-              );
-              const source = this.outputAudioContext.createBufferSource();
-              source.buffer = audioBuffer;
-              source.connect(this.outputNode);
-              source.addEventListener('ended', () =>{
-                this.sources.delete(source);
-              });
+              for (const part of parts) {
+                if (part.inlineData) {
+                  const audioBuffer = await decodeAudioData(
+                    decode(part.inlineData.data),
+                    this.outputAudioContext,
+                    24000,
+                    1,
+                  );
 
-              source.start(this.nextStartTime);
-              this.nextStartTime = this.nextStartTime + audioBuffer.duration;
-              this.sources.add(source);
-            }
+                  const source = this.outputAudioContext.createBufferSource();
+                  source.buffer = audioBuffer;
+                  source.connect(this.outputNode);
 
-            const interrupted = message.serverContent?.interrupted;
-            if(interrupted) {
-              for(const source of this.sources.values()) {
-                source.stop();
-                this.sources.delete(source);
+                  source.addEventListener("ended", () => {
+                    this.sources.delete(source);
+                  });
+
+                  // schedule playback in sequence
+                  this.nextStartTime = Math.max(
+                    this.nextStartTime,
+                    this.outputAudioContext.currentTime,
+                  );
+                  source.start(this.nextStartTime);
+                  this.nextStartTime += audioBuffer.duration;
+
+                  this.sources.add(source);
+                }
+                if (part.text) {
+                  const text = part.text.trim();
+                  console.log("Audio session - Gemini text:", text);
+                }
               }
-              this.nextStartTime = 0;
+              const interrupted = message.serverContent?.interrupted;
+              if (interrupted) {
+                for (const source of this.sources.values()) {
+                  source.stop();
+                  this.sources.delete(source);
+                }
+                this.nextStartTime = 0;
+              }
+            } catch (err) {
+              console.error("Error in onmessage:", err);
+              this.updateError(err.message || "Unknown error");
             }
           },
+
           onerror: (e: ErrorEvent) => {
             this.updateError(e.message);
           },
@@ -152,16 +166,15 @@ export class GdmLiveAudio extends LitElement {
           },
         },
         config: {
-          responseModalities: [Modality.AUDIO],
+          responseModalities: [Modality.TEXT],
           speechConfig: {
-            voiceConfig: {prebuiltVoiceConfig: {voiceName: 'Orus'}},
-            // languageCode: 'en-GB'
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Orus' } },
           },
-systemInstruction: {
-  parts: [{
-    text: "You are Deli Bot, created by Deliverit (founded by Sidhant Suri with CTO Kunal Aashri). You are NOT Google. You specialize exclusively in DeliverIt’s 1-hour delivery service, products, services, technology, and company information. Always be enthusiastic about DeliverIt’s 1-hour delivery! If users ask about unrelated topics, politely redirect them back to DeliverIt. You can do many things, such as booking an order, adding items to the cart (e.g., 'Add Amul Butter to my cart' or 'Add Tomato Hybrid to my cart'), or clearing the cart. If someone asks 'What can you do?', give helpful examples like adding products or clearing the cart.You can declare prices also , but tell them Deliverit is developing me now and adding more data "
-  }]
-},
+          systemInstruction: {
+            parts: [{
+              text: "You are Deli Bot, created by Deliverit (founded by Sidhant Suri with CTO Kunal Aashri). You are NOT Google. You specialize exclusively in DeliverIt's 1-hour delivery service, products, services, technology, and company information. Always be enthusiastic about DeliverIt's 1-hour delivery! If users ask about unrelated topics, politely redirect them back to DeliverIt. \n\nIMPORTANT: When performing actions, use these EXACT phrases so the system can detect them:\n- When clearing cart: say 'I am clearing your cart now'\n- When adding items: say 'I am adding [product name] to your cart now'\n- When booking orders: say 'I am booking your order now'\n\nYou can do many things, such as booking an order, adding items to the cart (e.g., 'Add Amul Butter to my cart' or 'Add Tomato Hybrid to my cart'), or clearing the cart. If someone asks 'What can you do?', give helpful examples like adding products or clearing the cart. You can declare prices also, but tell them Deliverit is developing me now and adding more data."
+            }]
+          },
         },
       });
     } catch (e) {
@@ -212,7 +225,11 @@ systemInstruction: {
         const inputBuffer = audioProcessingEvent.inputBuffer;
         const pcmData = inputBuffer.getChannelData(0);
 
-        this.session.sendRealtimeInput({media: createBlob(pcmData)});
+        // Send audio to session
+        this.session.sendRealtimeInput({ media: createBlob(pcmData) });
+
+        // Store the user input for potential intent processing
+        this.lastUserInput = 'User is speaking...';
       };
 
       this.sourceNode.connect(this.scriptProcessorNode);
