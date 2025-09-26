@@ -1,9 +1,7 @@
-
-
 import { GoogleGenAI, LiveServerMessage, Modality, Session } from '@google/genai';
 import { LitElement, css, html } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { createBlob, decode, decodeAudioData } from './utils';
+import { createBlob } from './utils';
 import './visual-3d';
 
 @customElement('gdm-live-audio')
@@ -20,11 +18,22 @@ export class GdmLiveAudio extends LitElement {
     (window as any).webkitAudioContext)({ sampleRate: 24000 });
   @state() inputNode = this.inputAudioContext.createGain();
   @state() outputNode = this.outputAudioContext.createGain();
-  private nextStartTime = 0;
   private mediaStream: MediaStream;
-  private sourceNode: AudioBufferSourceNode;
+  private sourceNode: MediaStreamAudioSourceNode;
   private scriptProcessorNode: ScriptProcessorNode;
-  private sources = new Set<AudioBufferSourceNode>();
+
+  // ====== ELEVEN LABS CONFIG ======
+  private ELEVENLABS_API_KEY = process.env.ELEVEN_LABS_API_KEY;
+  private ELEVENLABS_VOICE_ID = "1Z7Y8o9cvUeWq8oLKgMY";
+
+  // Text and audio queue management
+  private textBuffer: string[] = [];
+  private audioQueue: AudioBufferSourceNode[] = [];
+  private isSpeaking = false;
+  private bufferTimeout: number | null = null;
+  private readonly BUFFER_FLUSH_TIMEOUT = 500; // ms to wait before flushing buffer
+  private readonly MAX_BUFFER_LENGTH = 500; // Max characters in buffer
+  private readonly RETRY_ATTEMPTS = 3; // Number of retries for ElevenLabs API
 
   static styles = css`
     #status {
@@ -35,7 +44,6 @@ export class GdmLiveAudio extends LitElement {
       z-index: 10;
       text-align: center;
     }
-
     .controls {
       z-index: 10;
       position: absolute;
@@ -47,28 +55,25 @@ export class GdmLiveAudio extends LitElement {
       justify-content: center;
       flex-direction: column;
       gap: 10px;
-
-      button {
-        outline: none;
-        border: 1px solid rgba(52, 42, 42, 0.2);
-        color: white;
-        border-radius: 12px;
-        background: rgba(255, 255, 255, 0.1);
-        width: 64px;
-        height: 64px;
-        cursor: pointer;
-        font-size: 24px;
-        padding: 0;
-        margin: 0;
-
-        &:hover {
-          background: rgba(255, 255, 255, 0.2);
-        }
-      }
-
-      button[disabled] {
-        display: none;
-      }
+    }
+    .controls button {
+      outline: none;
+      border: 1px solid rgba(52, 42, 42, 0.2);
+      color: white;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.1);
+      width: 64px;
+      height: 64px;
+      cursor: pointer;
+      font-size: 24px;
+      padding: 0;
+      margin: 0;
+    }
+    .controls button:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    .controls button[disabled] {
+      display: none;
     }
   `;
 
@@ -77,200 +82,250 @@ export class GdmLiveAudio extends LitElement {
     this.initClient();
   }
 
-  private initAudio() {
-    this.nextStartTime = this.outputAudioContext.currentTime;
-  }
-
-
-
   private async initClient() {
-    this.initAudio();
-
     this.client = new GoogleGenAI({
       apiKey: process.env.GEMINI_API_KEY,
     });
-
     this.outputNode.connect(this.outputAudioContext.destination);
-
     this.initSession();
   }
 
   private async initSession() {
-    const model = 'gemini-live-2.5-flash-preview';
-
     try {
       this.session = await this.client.live.connect({
-        model: model,
-
+        model: "gemini-live-2.5-flash-preview",
         callbacks: {
           onopen: () => {
             this.updateStatus('Opened');
           },
           onmessage: async (message: LiveServerMessage) => {
             try {
-              console.log("Message received:", message);
-
               const parts = message.serverContent?.modelTurn?.parts || [];
 
               for (const part of parts) {
-                if (part.inlineData) {
-                  const audioBuffer = await decodeAudioData(
-                    decode(part.inlineData.data),
-                    this.outputAudioContext,
-                    24000,
-                    1,
-                  );
-
-                  const source = this.outputAudioContext.createBufferSource();
-                  source.buffer = audioBuffer;
-                  source.connect(this.outputNode);
-
-                  source.addEventListener("ended", () => {
-                    this.sources.delete(source);
-                  });
-
-                  // schedule playback in sequence
-                  this.nextStartTime = Math.max(
-                    this.nextStartTime,
-                    this.outputAudioContext.currentTime,
-                  );
-                  source.start(this.nextStartTime);
-                  this.nextStartTime += audioBuffer.duration;
-
-                  this.sources.add(source);
-                }
                 if (part.text) {
                   const text = part.text.trim();
-                  console.log("Audio session - Gemini text:", text);
+                  console.log("Gemini TEXT:", text);
+
+                  // Intent handling example
+                  if (text.includes("adding") && text.includes("cart")) {
+                    console.log("Trigger API call: Add to cart");
+                    // fetch("/api/cart/add", { method: "POST", body: JSON.stringify(...) });
+                  }
+
+                  // Buffer the text
+                  this.bufferText(text);
                 }
-              }
-              const interrupted = message.serverContent?.interrupted;
-              if (interrupted) {
-                for (const source of this.sources.values()) {
-                  source.stop();
-                  this.sources.delete(source);
-                }
-                this.nextStartTime = 0;
               }
             } catch (err) {
               console.error("Error in onmessage:", err);
               this.updateError(err.message || "Unknown error");
             }
           },
-
           onerror: (e: ErrorEvent) => {
             this.updateError(e.message);
           },
           onclose: (e: CloseEvent) => {
-            this.updateStatus('Close:' + e.reason);
+            this.updateStatus('Close: ' + e.reason);
+            this.flushBuffer(); // Ensure any remaining text is spoken
           },
         },
         config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Orus' } },
-          },
+          responseModalities: [Modality.TEXT],
           systemInstruction: {
             parts: [{
-              text: "You are Deli Bot, created by Deliverit (founded by Sidhant Suri with CTO Kunal Aashri). You are NOT Google. You specialize exclusively in DeliverIt's 1-hour delivery service, products, services, technology, and company information. Always be enthusiastic about DeliverIt's 1-hour delivery! If users ask about unrelated topics, politely redirect them back to DeliverIt. \n\nIMPORTANT: When performing actions, use these EXACT phrases so the system can detect them:\n- When clearing cart: say 'I am clearing your cart now'\n- When adding items: say 'I am adding [product name] to your cart now'\n- When booking orders: say 'I am booking your order now'\n\nYou can do many things, such as booking an order, adding items to the cart (e.g., 'Add Amul Butter to my cart' or 'Add Tomato Hybrid to my cart'), or clearing the cart. If someone asks 'What can you do?', give helpful examples like adding products or clearing the cart. You can declare prices also, but tell them Deliverit is developing me now and adding more data."
+              text: "You are Deli Bot, created by Deliverit (founded by Sidhant Suri with CTO Kunal Aashri). You are NOT Google. You specialize exclusively in DeliverIt's 1-hour delivery service, products, services, technology, and company information. Always be enthusiastic about DeliverIt's 1-hour delivery! If users ask about unrelated topics, politely redirect them back to DeliverIt.\n\nIMPORTANT: When performing actions, use these EXACT phrases:\n- 'I am clearing your cart now'\n- 'I am adding [product name] to your cart now'\n- 'I am booking your order now'"
             }]
-          },
+          }
         },
       });
     } catch (e) {
       console.error(e);
+      this.updateError("Failed to initialize session");
     }
+  }
+
+  // Buffer text chunks and flush after timeout or max length
+  private bufferText(text: string) {
+    this.textBuffer.push(text);
+
+    // Calculate total length of buffered text
+    const totalLength = this.textBuffer.join(' ').length;
+
+    // Flush buffer if it exceeds max length or ends with punctuation
+    if (totalLength > this.MAX_BUFFER_LENGTH || /[.!?]$/.test(text)) {
+      this.flushBuffer();
+    } else {
+      // Set a timeout to flush the buffer if no new text arrives
+      if (this.bufferTimeout) {
+        clearTimeout(this.bufferTimeout);
+      }
+      this.bufferTimeout = window.setTimeout(() => {
+        this.flushBuffer();
+      }, this.BUFFER_FLUSH_TIMEOUT);
+    }
+  }
+
+  // Flush buffered text and send to ElevenLabs
+  private async flushBuffer() {
+    if (this.bufferTimeout) {
+      clearTimeout(this.bufferTimeout);
+      this.bufferTimeout = null;
+    }
+
+    if (this.textBuffer.length === 0) return;
+
+    const textToSpeak = this.textBuffer.join(' ').trim();
+    this.textBuffer = [];
+
+    if (textToSpeak) {
+      await this.speakWithElevenLabs(textToSpeak);
+    }
+  }
+
+  // Speak with ElevenLabs with retry logic
+  private async speakWithElevenLabs(text: string, attempt: number = 1): Promise<void> {
+    try {
+      // Ensure audio context is running
+      if (this.outputAudioContext.state === 'suspended') {
+        await this.outputAudioContext.resume();
+      }
+
+      const response = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${this.ELEVENLABS_VOICE_ID}`,
+        {
+          method: "POST",
+          headers: {
+            "xi-api-key": "sk_eaa9192f60b209fd4f0e9eb674909c8417280ca8ee03a361",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: text,
+            voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`ElevenLabs API failed: ${response.statusText}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const audioBuffer = await this.outputAudioContext.decodeAudioData(arrayBuffer);
+
+      const source = this.outputAudioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(this.outputNode);
+
+      // Add to audio queue
+      this.audioQueue.push(source);
+
+      // Start playing if not already speaking
+      if (!this.isSpeaking) {
+        this.processAudioQueue();
+      }
+    } catch (err) {
+      console.error(`TTS Error (Attempt ${attempt}):`, err);
+      if (attempt < this.RETRY_ATTEMPTS) {
+        console.log(`Retrying... (${attempt + 1}/${this.RETRY_ATTEMPTS})`);
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+        return this.speakWithElevenLabs(text, attempt + 1);
+      } else {
+        this.updateError("Failed to generate speech after retries");
+      }
+    }
+  }
+
+  // Process audio queue for seamless playback
+  private async processAudioQueue() {
+    if (this.audioQueue.length === 0) {
+      this.isSpeaking = false;
+      return;
+    }
+
+    this.isSpeaking = true;
+    const source = this.audioQueue.shift()!;
+
+    await new Promise<void>((resolve) => {
+      source.onended = () => {
+        resolve();
+      };
+      source.start();
+    });
+
+    // Continue processing the queue
+    await this.processAudioQueue();
   }
 
   private updateStatus(msg: string) {
     this.status = msg;
+    this.requestUpdate();
   }
 
   private updateError(msg: string) {
     this.error = msg;
+    this.requestUpdate();
   }
 
   private async startRecording() {
-    if (this.isRecording) {
-      return;
-    }
+    if (this.isRecording) return;
 
-    this.inputAudioContext.resume();
-
+    await this.inputAudioContext.resume();
     this.updateStatus('Requesting microphone access...');
 
     try {
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: false,
-      });
+      this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this.updateStatus('Microphone access granted.');
 
-      this.updateStatus('Microphone access granted. Starting capture...');
-
-      this.sourceNode = this.inputAudioContext.createMediaStreamSource(
-        this.mediaStream,
-      );
+      this.sourceNode = this.inputAudioContext.createMediaStreamSource(this.mediaStream);
       this.sourceNode.connect(this.inputNode);
 
       const bufferSize = 256;
-      this.scriptProcessorNode = this.inputAudioContext.createScriptProcessor(
-        bufferSize,
-        1,
-        1,
-      );
+      this.scriptProcessorNode = this.inputAudioContext.createScriptProcessor(bufferSize, 1, 1);
 
-      this.scriptProcessorNode.onaudioprocess = (audioProcessingEvent) => {
+      this.scriptProcessorNode.onaudioprocess = (e) => {
         if (!this.isRecording) return;
-
-        const inputBuffer = audioProcessingEvent.inputBuffer;
-        const pcmData = inputBuffer.getChannelData(0);
-
-        // Send audio to session
+        const pcmData = e.inputBuffer.getChannelData(0);
         this.session.sendRealtimeInput({ media: createBlob(pcmData) });
-
-        // Store the user input for potential intent processing
-        this.lastUserInput = 'User is speaking...';
       };
 
       this.sourceNode.connect(this.scriptProcessorNode);
       this.scriptProcessorNode.connect(this.inputAudioContext.destination);
 
       this.isRecording = true;
-      this.updateStatus('🔴 Recording... Capturing PCM chunks.');
+      this.updateStatus('🔴 Recording...');
     } catch (err) {
-      console.error('Error starting recording:', err);
+      console.error('Mic error:', err);
       this.updateStatus(`Error: ${err.message}`);
       this.stopRecording();
     }
   }
 
   private stopRecording() {
-    if (!this.isRecording && !this.mediaStream && !this.inputAudioContext)
-      return;
-
-    this.updateStatus('Stopping recording...');
+    if (!this.isRecording) return;
 
     this.isRecording = false;
-
-    if (this.scriptProcessorNode && this.sourceNode && this.inputAudioContext) {
-      this.scriptProcessorNode.disconnect();
-      this.sourceNode.disconnect();
-    }
-
-    this.scriptProcessorNode = null;
-    this.sourceNode = null;
+    this.scriptProcessorNode?.disconnect();
+    this.sourceNode?.disconnect();
 
     if (this.mediaStream) {
-      this.mediaStream.getTracks().forEach((track) => track.stop());
-      this.mediaStream = null;
+      this.mediaStream.getTracks().forEach((t) => t.stop());
     }
 
-    this.updateStatus('Recording stopped. Click Start to begin again.');
+    this.updateStatus('Recording stopped.');
+    this.flushBuffer(); // Ensure any remaining text is spoken
   }
 
   private reset() {
     this.session?.close();
     this.initSession();
+    this.textBuffer = [];
+    this.audioQueue = [];
+    this.isSpeaking = false;
+    if (this.bufferTimeout) {
+      clearTimeout(this.bufferTimeout);
+      this.bufferTimeout = null;
+    }
     this.updateStatus('Session cleared.');
   }
 
@@ -278,52 +333,15 @@ export class GdmLiveAudio extends LitElement {
     return html`
       <div>
         <div class="controls">
-          <button
-            id="resetButton"
-            @click=${this.reset}
-            ?disabled=${this.isRecording}>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              height="40px"
-              viewBox="0 -960 960 960"
-              width="40px"
-              fill="#ffffff">
-              <path
-                d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z" />
-            </svg>
-          </button>
-          <button
-            id="startButton"
-            @click=${this.startRecording}
-            ?disabled=${this.isRecording}>
-            <svg
-              viewBox="0 0 100 100"
-              width="32px"
-              height="32px"
-              fill="#c80000"
-              xmlns="http://www.w3.org/2000/svg">
-              <circle cx="50" cy="50" r="50" />
-            </svg>
-          </button>
-          <button
-            id="stopButton"
-            @click=${this.stopRecording}
-            ?disabled=${!this.isRecording}>
-            <svg
-              viewBox="0 0 100 100"
-              width="32px"
-              height="32px"
-              fill="#000000"
-              xmlns="http://www.w3.org/2000/svg">
-              <rect x="0" y="0" width="100" height="100" rx="15" />
-            </svg>
-          </button>
+          <button id="resetButton" @click=${this.reset} ?disabled=${this.isRecording}>♻️</button>
+          <button id="startButton" @click=${this.startRecording} ?disabled=${this.isRecording}>🎙️</button>
+          <button id="stopButton" @click=${this.stopRecording} ?disabled=${!this.isRecording}>⏹️</button>
         </div>
-
-        <div id="status"> ${this.error} </div>
+        <div id="status">${this.error || this.status}</div>
         <gdm-live-audio-visuals-3d
           .inputNode=${this.inputNode}
-          .outputNode=${this.outputNode}></gdm-live-audio-visuals-3d>
+          .outputNode=${this.outputNode}>
+        </gdm-live-audio-visuals-3d>
       </div>
     `;
   }
