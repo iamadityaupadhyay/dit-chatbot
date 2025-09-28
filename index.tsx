@@ -28,7 +28,7 @@ export class GdmLiveAudio extends LitElement {
   private currentAudioSource: AudioBufferSourceNode | null = null;
 
   // ====== MURF AI CONFIG ======
-  private MURF_API_KEY = "ap2_10a62c3e-ef81-4e04-996e-191e4fdab276" // Corrected to use MURF_API_KEY
+  private MURF_API_KEY = "ap2_10a62c3e-ef81-4e04-996e-191e4fdab276";
   private MURF_VOICE_ID = "en-US-natalie";
 
   // Text and audio queue management
@@ -36,9 +36,10 @@ export class GdmLiveAudio extends LitElement {
   private audioQueue: AudioBufferSourceNode[] = [];
   private isSpeaking = false;
   private bufferTimeout: number | null = null;
-  private readonly BUFFER_FLUSH_TIMEOUT = 500; // ms to wait before flushing buffer
+  private readonly BUFFER_FLUSH_TIMEOUT = 800; // Increased to 800ms
   private readonly MAX_BUFFER_LENGTH = 500; // Max characters in buffer
   private readonly RETRY_ATTEMPTS = 3; // Number of retries for Murf API
+  private recentTexts: Set<string> = new Set(); // For deduplication
 
   // Tools for function calling
   private tools = [
@@ -139,7 +140,7 @@ export class GdmLiveAudio extends LitElement {
     try {
       this.session = await this.client.live.connect({
         model: "gemini-live-2.5-flash-preview",
-        tools: this.tools, // Ensure tools are included
+        tools: this.tools,
         callbacks: {
           onopen: () => {
             this.updateStatus('Opened');
@@ -147,13 +148,12 @@ export class GdmLiveAudio extends LitElement {
           onmessage: async (message: LiveServerMessage) => {
             console.log("Received message:", JSON.stringify(message, null, 2));
             try {
-              // Handle tool calls first
+              // Handle tool calls
               if (message.toolCall) {
                 const functionResponses = [];
                 for (const fc of message.toolCall.functionCalls) {
                   console.log(`Processing tool call: ${fc.name}`, fc.args);
                   let result: any;
-                  let responseText: string | null = null;
 
                   if (fc.name === "search_products") {
                     const args = fc.args || {};
@@ -161,25 +161,17 @@ export class GdmLiveAudio extends LitElement {
                     console.log("Searching for:", query);
                     let products = await searchProducts(query);
                     console.log("Raw searchProducts response:", products);
-                    if (products) {
-                      products = products.data.slice(0, 2);
-                      products = products.map((p: any) => ({
+                    if (products && products.data && products.data.length > 0) {
+                      products = products.data.slice(0, 2).map((p: any) => ({
                         id: p.id,
                         name: p.name,
-                        price: p.base_mrp,
+                        price: Math.round(p.base_mrp),
                         isAvailable: true
                       }));
                       console.log("Processed products:", products);
                       result = { products: products.filter((p: any) => p.isAvailable) };
-
-                      const availableProducts = result.products;
-                      if (availableProducts.length > 0) {
-                        responseText = `Great! I found these options: ${availableProducts
-                          .map((p, i) => `${i + 1}. ${p.name} for ${p.price} rupees`)
-                          .join(', ')}. Which one would you like?`;
-                      } 
                     } else {
-                      throw new Error(`API failed: No products found`);
+                      result = { products: [], message: `No available products found for "${query}"` };
                     }
                   } else if (fc.name === "add_to_cart") {
                     const args = fc.args || {};
@@ -188,23 +180,17 @@ export class GdmLiveAudio extends LitElement {
                     try {
                       const addResponse = await addToCart(args.productId, quantity);
                       console.log("Add to Cart Response:", addResponse);
-                      // Check if the response indicates an out-of-stock error
                       if (addResponse.status_code === 0 && addResponse.message === "This item is out of stock. please try later") {
                         result = { success: false, message: "This item is out of stock." };
-                        responseText = "Sorry, this item is out of stock. Please try another product or check back later.";
                       } else {
-                        // Assume success if no error
-                        result = { success: true, message: "Added to cart successfully!" };
-                        responseText = `I am adding ${args.productName || 'the product'} to your cart now!`;
+                        result = { success: true, message: `Added ${args.productName || 'product'} to cart successfully` };
                       }
                     } catch (err) {
                       console.error("Add to Cart Error:", err);
-                      result = { success: false, message: "Failed to add to cart." };
-                      responseText = "Sorry, I couldn't add the product to your cart. Please try again.";
+                      result = { success: false, message: `Failed to add ${args.productName || 'product'} to cart` };
                     }
                   } else {
                     result = { error: "Unknown tool" };
-                    responseText = "Sorry, I encountered an error processing your request.";
                   }
 
                   functionResponses.push({
@@ -214,11 +200,6 @@ export class GdmLiveAudio extends LitElement {
                       result: result
                     }
                   });
-
-                  if (responseText) {
-                    console.log("Speaking response:", responseText);
-                    this.interruptAndSpeak(responseText);
-                  }
                 }
                 if (functionResponses.length > 0) {
                   console.log("Sending tool response:", functionResponses);
@@ -251,21 +232,21 @@ export class GdmLiveAudio extends LitElement {
         config: {
           responseModalities: [Modality.TEXT],
           tools: this.tools,
-          systemInstruction: {
-            parts: [{
-              text: `You are Deli Bot, created by Deliverit (founded by Sidhant Suri with CTO Kunal Aashri). You are NOT Google. You specialize exclusively in DeliverIt's 1-hour delivery service, products, services, technology, and company information. Always be enthusiastic about DeliverIt's 1-hour delivery! If users ask about unrelated topics, politely redirect them back to DeliverIt.
+         systemInstruction: {
+  parts: [{
+    text: `You are Deli Bot, created by Deliverit (founded by Sidhant Suri with CTO Kunal Aashri). You are NOT Google. You specialize exclusively in DeliverIt's delivery service, products, services. If users ask about unrelated topics, politely redirect them back to DeliverIt.
 
 IMPORTANT: When performing actions, use these EXACT phrases:
 - 'I am clearing your cart now'
-- 'I am adding [product name] to your cart now'
+- 'I am adding <phoneme alphabet="ipa" ph="ˈɑːmul">Amul</phoneme> to your cart now' when the product is Amul, otherwise 'I am adding [product name] to your cart now'
 - 'I am booking your order now'
 - 'You are Indian, and Female'
 
-ORDERING FLOW: When the user expresses intent to order something (e.g., "I want to order [anything]"), extract the exact product name or keyword from their request. Use the search_products tool with that query to get available products (each with id, name, price, isAvailable). Only consider available products. Then, in your response, enthusiastically list the matching products with their names and prices (e.g., "Great! I found these options: 1. [name] for [price] rupees<break time="1s"/>, 2. ... Which one would you like?"). Wait for the user to specify which one (by name or number). Once selected, ask for the quantity (e.g., "How many would you like?"). After getting the quantity, use the add_to_cart tool with the productId and quantity, then confirm "I am adding [product name] to your cart now!".
+ORDERING FLOW: When the user expresses intent to order something (e.g., "I want to order [anything]"), extract the exact product name or keyword from their request. Use the search_products tool with that query to get available products (each with id, name, price, isAvailable). Only consider available products. If products is empty or no available products, say "Sorry, I couldn't find any available products for [query]. What else can I help with?" Then, list the matching products with their names and prices using SSML for proper formatting (e.g., "Great! I found these options: 1. <phoneme alphabet='ipa' ph='ˈɑːmul'>Amul</phoneme> for <say-as interpret-as='number'>[Math.round(price)]</say-as> rupees<break time='1s'/>, 2. ... Which one would you like?"). Wait for the user to specify which one (by name or number). After selection, ask for the quantity (e.g., "How many would you like?"). After getting the quantity, use the add_to_cart tool with the productId and quantity. If the tool returns success: false with a message (e.g., "This item is out of stock"), say "Sorry, [product name] is out of stock. Would you like to try another product?" If successful, confirm with "I am adding <phoneme alphabet='ipa' ph='ˈɑːmul'>Amul</phoneme> to your cart now!" for Amul, or "I am adding [product name] to your cart now!" for others.
 
-ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more," "other products," or similar phrases, reset the current product selection and treat it as a new order request. Ask the user to specify a new product (e.g., "Awesome! What other product would you like to order?") and restart the ordering flow by calling search_products with the new query. Do not reuse previous product IDs unless explicitly requested. After adding an item to the cart, always confirm if the user wants to add more items before proceeding.`
-            }]
-          }
+ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more," "other products," or similar, reset the current product selection and ask, "Awesome! What other product would you like to order?" Then restart the ordering flow with search_products. Do not reuse previous product IDs unless explicitly requested. After adding an item, always ask, "Would you like to add more items to your cart?"`
+  }]
+}
         },
       });
     } catch (e) {
@@ -287,6 +268,17 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
   }
 
   private interruptAndBuffer(text: string): void {
+    // Deduplicate text
+    if (this.recentTexts.has(text)) {
+      console.log("Skipping duplicate text:", text);
+      return;
+    }
+    this.recentTexts.add(text);
+    if (this.recentTexts.size > 10) {
+      const first = this.recentTexts.values().next().value;
+      this.recentTexts.delete(first);
+    }
+
     this.stopCurrentAudio();
     this.audioQueue = [];
     this.textBuffer.push(text);
@@ -334,57 +326,71 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
   }
 
   private async speakWithMurf(text: string, attempt: number = 1): Promise<void> {
-    try {
-      if (this.outputAudioContext.state === 'suspended') {
-        await this.outputAudioContext.resume();
-      }
+  const maxRetries = this.RETRY_ATTEMPTS;
+  const delay = Math.pow(2, attempt - 1) * 1000; // Exponential backoff: 1s, 2s, 4s
 
-      const response = await axios({
-        method: 'post',
-        url: 'https://api.murf.ai/v1/speech/generate',
-        headers: {
-          'Content-Type': 'application/json',
-          'api-key': this.MURF_API_KEY, // Use the environment variable
-          "multiNativeLocale":"hi-IN"
-        },
-        data: JSON.stringify({
-          text: text,
-          voiceId: this.MURF_VOICE_ID
-        })
-      });
+  try {
+    if (this.outputAudioContext.state === 'suspended') {
+      await this.outputAudioContext.resume();
+    }
 
-      if (!response.data || !response.data.audioFile) {
-        throw new Error('Murf API failed: No audio file in response');
-      }
+    const processedText = this.USE_SSML ? text : text.replace(/<[^>]*>/g, '');
+    console.log(`Murf API Call (Attempt ${attempt}/${maxRetries}): Text length=${processedText.length}, Voice=${this.MURF_VOICE_ID}`);
 
-      const audioResponse = await fetch(response.data.audioFile);
-      if (!audioResponse.ok) {
-        throw new Error(`Failed to fetch audio: ${audioResponse.statusText}`);
-      }
+    const response = await axios({
+      method: 'post',
+      url: 'https://api.murf.ai/v1/speech/generate',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': this.MURF_API_KEY,
+        "multiNativeLocale": "hi-IN"
+      },
+      data: JSON.stringify({
+        text: processedText,
+        voiceId: this.MURF_VOICE_ID,
+        model: "GEN2" // Ensure GEN2 model
+      })
+    });
 
-      const arrayBuffer = await audioResponse.arrayBuffer();
-      const audioBuffer = await this.outputAudioContext.decodeAudioData(arrayBuffer);
+    console.log("Murf API Raw Response:", JSON.stringify(response.data, null, 2));
 
-      const source = this.outputAudioContext.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(this.outputNode);
+    if (response.data.error) {
+      throw new Error(`Murf API Error: ${response.data.error.message || response.data.error}`);
+    }
 
-      this.audioQueue.push(source);
+    if (!response.data || !response.data.audioFile) {
+      throw new Error(`Murf API failed: No audio file in response. Full data: ${JSON.stringify(response.data)}`);
+    }
 
-      if (!this.isSpeaking) {
-        this.processAudioQueue();
-      }
-    } catch (err) {
-      console.error(`TTS Error (Attempt ${attempt}):`, err);
-      if (attempt < this.RETRY_ATTEMPTS) {
-        console.log(`Retrying... (${attempt + 1}/${this.RETRY_ATTEMPTS})`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return this.speakWithMurf(text, attempt + 1);
-      } else {
-        this.updateError("Failed to generate speech after retries");
-      }
+    const audioResponse = await fetch(response.data.audioFile);
+    if (!audioResponse.ok) {
+      throw new Error(`Failed to fetch audio: ${audioResponse.status} - ${audioResponse.statusText}`);
+    }
+
+    const arrayBuffer = await audioResponse.arrayBuffer();
+    const audioBuffer = await this.outputAudioContext.decodeAudioData(arrayBuffer);
+
+    const source = this.outputAudioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(this.outputNode);
+
+    this.audioQueue.push(source);
+
+    if (!this.isSpeaking) {
+      this.processAudioQueue();
+    }
+  } catch (err) {
+    console.error(`TTS Error (Attempt ${attempt}/${maxRetries}):`, err);
+    if (attempt < maxRetries) {
+      console.log(`Retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return this.speakWithMurf(text, attempt + 1);
+    } else {
+      console.warn("Murf failed after retries; falling back to browser TTS");
+      this.fallbackToBrowserTTS(text);
     }
   }
+}
 
   private async processAudioQueue() {
     if (this.audioQueue.length === 0) {
