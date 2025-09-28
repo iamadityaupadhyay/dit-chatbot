@@ -29,19 +29,14 @@ export class TextToSpeechService {
 
   async speak(text: string, attempt: number = 1): Promise<void> {
     const maxRetries = this.config.retryAttempts;
-    const delay = Math.pow(2, attempt - 1) * 1000; // Exponential backoff: 1s, 2s, 4s
-
-    console.log(`🎵 TTS: Speaking "${text}" (attempt ${attempt}/${maxRetries})`);
-
+    const delay = Math.pow(2, attempt - 1) * 1000;
     try {
       if (this.audioContext.state === 'suspended') {
-        console.log('🎵 Resuming audio context...');
+        
         await this.audioContext.resume();
       }
 
       const processedText = this.config.useSSML ? text : text.replace(/<[^>]*>/g, '');
-      console.log(`🎵 Making Murf API call...`);
-
       const response = await axios({
         method: 'post',
         url: 'https://api.murf.ai/v1/speech/generate',
@@ -57,8 +52,6 @@ export class TextToSpeechService {
         })
       });
 
-      console.log("🎵 Murf API Response:", response.status);
-
       if (response.data.error) {
         throw new Error(`Murf API Error: ${response.data.error.message || response.data.error}`);
       }
@@ -66,14 +59,12 @@ export class TextToSpeechService {
       if (!response.data || !response.data.audioFile) {
         throw new Error(`Murf API failed: No audio file in response`);
       }
-
-      console.log('🎵 Fetching audio file...');
       const audioResponse = await fetch(response.data.audioFile);
       if (!audioResponse.ok) {
         throw new Error(`Failed to fetch audio: ${audioResponse.status} - ${audioResponse.statusText}`);
       }
 
-      console.log('🎵 Decoding audio data...');
+      
       const arrayBuffer = await audioResponse.arrayBuffer();
       const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
 
@@ -82,7 +73,7 @@ export class TextToSpeechService {
       source.connect(this.outputNode);
 
       this.audioQueue.push(source);
-      console.log(`🎵 Added to queue. Queue length: ${this.audioQueue.length}`);
+      
 
       if (!this.isSpeaking) {
         this.processAudioQueue();
@@ -90,7 +81,7 @@ export class TextToSpeechService {
     } catch (err: any) {
       console.error(`🎵 TTS Error (Attempt ${attempt}/${maxRetries}):`, err);
       if (attempt < maxRetries) {
-        console.log(`🎵 Retrying in ${delay}ms...`);
+        
         await new Promise(resolve => setTimeout(resolve, delay));
         return this.speak(text, attempt + 1);
       } else {
@@ -101,12 +92,12 @@ export class TextToSpeechService {
   }
 
   private async processAudioQueue(): Promise<void> {
-    console.log(`🔊 Processing audio queue, length: ${this.audioQueue.length}`);
+    
     
     if (this.audioQueue.length === 0) {
       this.isSpeaking = false;
       this.currentAudioSource = null;
-      console.log('🔊 Audio queue empty, stopping');
+      
       return;
     }
 
@@ -115,7 +106,7 @@ export class TextToSpeechService {
 
     if (this.currentAudioSource && this.currentAudioSource !== source) {
       try {
-        console.log('🔊 Stopping previous audio source');
+        
         this.currentAudioSource.stop();
         this.currentAudioSource.disconnect();
       } catch (e) {
@@ -127,12 +118,12 @@ export class TextToSpeechService {
 
     await new Promise<void>((resolve) => {
       source.onended = () => {
-        console.log('🔊 Audio playback ended');
+        
         this.currentAudioSource = null;
         resolve();
       };
       
-      console.log('🔊 Starting audio playback');
+      
       source.start();
     });
 
@@ -140,7 +131,7 @@ export class TextToSpeechService {
   }
 
   private fallbackToBrowserTTS(text: string): void {
-    console.log("🎵 Using browser TTS as fallback:", text);
+    
     
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(text);
@@ -148,8 +139,8 @@ export class TextToSpeechService {
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
       
-      utterance.onstart = () => console.log("🔊 Browser TTS started");
-      utterance.onend = () => console.log("🔊 Browser TTS ended");
+      utterance.onstart = () => 
+      utterance.onend = () => 
       utterance.onerror = (e) => console.error("❌ Browser TTS error:", e);
       
       speechSynthesis.speak(utterance);
@@ -159,7 +150,7 @@ export class TextToSpeechService {
   }
 
   stopCurrentAudio(): void {
-    console.log('🔊 Stopping all audio');
+    
     
     if (this.currentAudioSource) {
       try {
@@ -180,7 +171,7 @@ export class TextToSpeechService {
   }
 
   clearQueue(): void {
-    console.log('🔊 Clearing audio queue');
+    
     this.audioQueue = [];
   }
 }

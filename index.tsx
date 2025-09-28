@@ -436,7 +436,7 @@ MANUAL CART ADDITIONS: When you receive a tool response indicating a manual cart
   private interruptAndBuffer(text: string): void {
     // Deduplicate text
     if (this.recentTexts.has(text)) {
-      console.log("Skipping duplicate text:", text);
+      
       return;
     }
     this.recentTexts.add(text);
@@ -516,7 +516,7 @@ MANUAL CART ADDITIONS: When you receive a tool response indicating a manual cart
     if (this.session) {
       const message = `I want to select "${product.name}" which costs ${product.price} rupees. The product ID is ${product.id}.`;
       // TODO: Send product selection to AI
-      console.log("Product selected:", product);
+      
     }
   }
 
@@ -548,7 +548,7 @@ MANUAL CART ADDITIONS: When you receive a tool response indicating a manual cart
           this.requestUpdate();
         }, 3000);
         
-        console.log("✅ Product added to cart successfully:", product.name);
+        
       } else {
         this.updateError(`Failed to add ${product.name} to cart`);
       }
@@ -589,7 +589,7 @@ MANUAL CART ADDITIONS: When you receive a tool response indicating a manual cart
         // Send the tool response to inform AI about the manual action
         this.session.sendToolResponse(toolResponse);
         
-        console.log("🤖 AI notified about manual cart addition:", product.name);
+        
         
         // Give AI a moment to process, then provide acknowledgment
         setTimeout(() => {

@@ -19,7 +19,7 @@ export class MessageHandler {
     onError: (error: string) => void,
     onProductsReceived?: (products: any[]) => void
   ): Promise<void> {
-    console.log("📨 Received message:", JSON.stringify(message, null, 2));
+    
     
     try {
       // Handle tool calls
@@ -33,7 +33,7 @@ export class MessageHandler {
         if (part && part.text && typeof part.text === 'string') {
           const text = part.text.trim();
           if (text.length > 0) {
-            console.log("📝 Gemini TEXT:", text);
+            
             onTextReceived(text);
           }
         }
@@ -58,7 +58,7 @@ export class MessageHandler {
         continue;
       }
 
-      console.log(`🔧 Processing tool call: ${fc.name}`, fc.args);
+      
       let result: any;
 
       try {
@@ -91,24 +91,24 @@ export class MessageHandler {
     }
 
     if (functionResponses.length > 0 && this.session) {
-      console.log("📤 Sending tool response:", functionResponses);
+      
       this.session.sendToolResponse({ functionResponses });
     }
   }
 
   private async handleSearchProducts(args: any, onProductsReceived?: (products: any[]) => void): Promise<any> {
     const query = (args?.query as string) || '';
-    console.log("🔍 Searching for:", query);
+    
     
     if (!query.trim()) {
       return { products: [], message: "Search query is empty" };
     }
 
     const products = await searchProducts(query);
-    console.log("📦 Raw searchProducts response:", products);
+    
     
     if (products && products.data && products.data.length > 0) {
-        console.log("✅ Products found:", products.data[0].product_images);
+        
       const processedProducts = products.data.slice(0, 2).map((p: any) => ({
         id: p.id,
         name: p.name,
@@ -117,7 +117,7 @@ export class MessageHandler {
         image: p.product_images[0]?.path || null
       }));
       
-      console.log("✅ Processed products:", processedProducts);
+      
       const availableProducts = processedProducts.filter((p: any) => p.isAvailable);
       
       // Show products in UI
@@ -132,7 +132,7 @@ export class MessageHandler {
   }
 
   private async handleAddToCart(args: any): Promise<any> {
-    console.log("🛒 Add to Cart Args:", args);
+    
     
     if (!args?.productId) {
       return { success: false, message: "Product ID is required" };
@@ -142,7 +142,7 @@ export class MessageHandler {
     
     try {
       const addResponse = await addToCart(args.productId, quantity);
-      console.log("📋 Add to Cart Response:", addResponse);
+      
       
       if (addResponse.status_code === 0 && addResponse.message === "This item is out of stock. please try later") {
         return { success: false, message: "This item is out of stock." };
