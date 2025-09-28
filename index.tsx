@@ -12,6 +12,8 @@ export class GdmLiveAudio extends LitElement {
   @state() isRecording = false;
   @state() status = '';
   @state() error = '';
+  @state() products: any[] = [];
+  @state() showProducts = false;
 
   private client: GoogleGenAI;
   private session: Session;
@@ -60,7 +62,7 @@ export class GdmLiveAudio extends LitElement {
       border: 1px solid rgba(52, 42, 42, 0.2);
       color: white;
       border-radius: 12px;
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(186, 50, 50, 0.1);
       width: 64px;
       height: 64px;
       cursor: pointer;
@@ -73,6 +75,127 @@ export class GdmLiveAudio extends LitElement {
     }
     .controls button[disabled] {
       display: none;
+    }
+    
+    .product-overlay {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      right: 20px;
+      z-index: 15;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 60vh;
+      overflow-y: auto;
+      animation: slideDown 0.5s ease-out;
+    }
+    
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .product-header {
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 15px;
+      border-radius: 15px;
+      text-align: center;
+      font-weight: bold;
+      font-size: 18px;
+      backdrop-filter: blur(10px);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 15px;
+    }
+    
+    .product-bubble {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(240, 240, 255, 0.9));
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      transition: all 0.3s ease;
+      cursor: pointer;
+      animation: bubbleIn 0.6s ease-out forwards;
+      opacity: 0;
+      transform: scale(0.8);
+    }
+    
+    @keyframes bubbleIn {
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+    
+    .product-bubble:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+      background: linear-gradient(135deg, rgba(255, 255, 255, 1), rgba(250, 250, 255, 0.95));
+    }
+    
+    .product-name {
+      font-size: 18px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 8px;
+      line-height: 1.3;
+    }
+    
+    .product-price {
+      font-size: 20px;
+      font-weight: bold;
+      color: #007bff;
+      margin-bottom: 10px;
+    }
+    
+    .product-id {
+      font-size: 12px;
+      color: #666;
+      opacity: 0.8;
+    }
+    
+    .product-image {
+      width: 60px;
+      height: 60px;
+      border-radius: 10px;
+      object-fit: cover;
+      margin-bottom: 10px;
+      border: 2px solid rgba(0, 123, 255, 0.2);
+    }
+    
+    .close-products {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(255, 0, 0, 0.8);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .close-products:hover {
+      background: rgba(255, 0, 0, 1);
     }
   `;
 
@@ -98,6 +221,11 @@ export class GdmLiveAudio extends LitElement {
       onFlushBuffer: () => this.flushBuffer(),
     };
     this.recordingService = new RecordingService(recordingCallbacks);
+    
+    // Set up product display callback
+    this.messageHandler.setProductCallback((products: any[]) => {
+      this.showProductList(products);
+    });
     
     this.initSession();
   }
@@ -227,6 +355,37 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
     this.requestUpdate();
   }
 
+  public showProductList(products: any[]) {
+    this.products = products;
+    this.showProducts = true;
+    this.requestUpdate();
+    
+    // Auto-hide after 30 seconds
+    setTimeout(() => {
+      if (this.showProducts) {
+        this.hideProductList();
+      }
+    }, 30000);
+  }
+
+  public hideProductList() {
+    this.showProducts = false;
+    this.products = [];
+    this.requestUpdate();
+  }
+
+  private selectProduct(product: any) {
+    // Hide the product list
+    this.hideProductList();
+    
+    // Send product selection to the AI
+    if (this.session) {
+      const message = `I want to select "${product.name}" which costs ${product.price} rupees. The product ID is ${product.id}.`;
+      // TODO: Send product selection to AI
+      console.log("Product selected:", product);
+    }
+  }
+
   private async startRecording() {
     await this.recordingService.startRecording();
   }
@@ -255,6 +414,29 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
   render() {
     return html`
       <div>
+        ${this.showProducts ? html`
+          <div class="product-overlay">
+            <button class="close-products" @click=${this.hideProductList}>×</button>
+            <div class="product-header">
+              🛒 Available Products (${this.products.length})
+            </div>
+            <div class="product-grid">
+              ${this.products.map((product, index) => html`
+                <div class="product-bubble" 
+                     @click=${() => this.selectProduct(product)}
+                     style="animation-delay: ${index * 0.1}s">
+                  ${product.image ? html`
+                    <img class="product-image" src="${product.image}" alt="${product.name}" />
+                  ` : ''}
+                  <div class="product-name">${product.name}</div>
+                  <div class="product-price">₹${product.price}</div>
+                  <div class="product-id">ID: ${product.id}</div>
+                </div>
+              `)}
+            </div>
+          </div>
+        ` : ''}
+        
         <div class="controls">
           <button id="resetButton" @click=${this.reset} ?disabled=${this.isRecording}>♻️</button>
           <button id="startButton" @click=${this.startRecording} ?disabled=${this.isRecording}>🎙️</button>

@@ -3,15 +3,21 @@ import { searchProducts, addToCart } from '../lib/productService';
 
 export class MessageHandler {
   private session: Session | null = null;
+  private onProductsReceived?: (products: any[]) => void;
 
   setSession(session: Session): void {
     this.session = session;
   }
 
+  setProductCallback(callback: (products: any[]) => void): void {
+    this.onProductsReceived = callback;
+  }
+
   async handleMessage(
     message: LiveServerMessage,
     onTextReceived: (text: string) => void,
-    onError: (error: string) => void
+    onError: (error: string) => void,
+    onProductsReceived?: (products: any[]) => void
   ): Promise<void> {
     console.log("📨 Received message:", JSON.stringify(message, null, 2));
     
@@ -57,7 +63,7 @@ export class MessageHandler {
 
       try {
         if (fc.name === "search_products") {
-          result = await this.handleSearchProducts(fc.args);
+          result = await this.handleSearchProducts(fc.args, this.onProductsReceived);
         } else if (fc.name === "add_to_cart") {
           result = await this.handleAddToCart(fc.args);
         } else {
@@ -90,7 +96,7 @@ export class MessageHandler {
     }
   }
 
-  private async handleSearchProducts(args: any): Promise<any> {
+  private async handleSearchProducts(args: any, onProductsReceived?: (products: any[]) => void): Promise<any> {
     const query = (args?.query as string) || '';
     console.log("🔍 Searching for:", query);
     
@@ -102,15 +108,24 @@ export class MessageHandler {
     console.log("📦 Raw searchProducts response:", products);
     
     if (products && products.data && products.data.length > 0) {
+        console.log("✅ Products found:", products.data[0].product_images);
       const processedProducts = products.data.slice(0, 2).map((p: any) => ({
         id: p.id,
         name: p.name,
         price: Math.round(p.base_mrp),
-        isAvailable: true
+        isAvailable: true,
+        image: p.product_images[0]?.path || null
       }));
       
       console.log("✅ Processed products:", processedProducts);
-      return { products: processedProducts.filter((p: any) => p.isAvailable) };
+      const availableProducts = processedProducts.filter((p: any) => p.isAvailable);
+      
+      // Show products in UI
+      if (onProductsReceived && availableProducts.length > 0) {
+        onProductsReceived(availableProducts);
+      }
+      
+      return { products: availableProducts };
     } else {
       return { products: [], message: `No available products found for "${query}"` };
     }
