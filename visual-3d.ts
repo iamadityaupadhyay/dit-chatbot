@@ -18,13 +18,9 @@ import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
 import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
 import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {FXAAShader} from 'three/addons/shaders/FXAAShader.js';
-import {CustomEnvironmentGenerator} from './custom-environment';
 import {fs as backdropFS, vs as backdropVS} from './backdrop-shader';
 import {vs as sphereVS} from './sphere-shader';
 
-/**
- * 3D live audio visual.
- */
 @customElement('gdm-live-audio-visuals-3d')
 export class GdmLiveAudioVisuals3D extends LitElement {
   private inputAnalyser!: Analyser;
@@ -141,12 +137,26 @@ export class GdmLiveAudioVisuals3D extends LitElement {
     scene.add(sphere);
     sphere.visible = false;
     
-    const customEnv = new CustomEnvironmentGenerator();
-    const customTexture = new THREE.CanvasTexture(customEnv.generateAsCanvas());
-    customTexture.mapping = THREE.EquirectangularReflectionMapping;
-    customTexture.colorSpace = THREE.SRGBColorSpace;
+    // Create a simple gradient environment map
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
     
-    const exrCubeRenderTarget = pmremGenerator.fromEquirectangular(customTexture);
+    // Create a simple gradient from dark blue to light blue
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, '#001d3d'); // Dark blue top
+    gradient.addColorStop(0.5, '#0077b6'); // Medium blue
+    gradient.addColorStop(1, '#90e0ef'); // Light blue bottom
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    const environmentTexture = new THREE.CanvasTexture(canvas);
+    environmentTexture.mapping = THREE.EquirectangularReflectionMapping;
+    environmentTexture.colorSpace = THREE.SRGBColorSpace;
+    
+    const exrCubeRenderTarget = pmremGenerator.fromEquirectangular(environmentTexture);
     sphereMaterial.envMap = exrCubeRenderTarget.texture;
     sphere.visible = true;
 
