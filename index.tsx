@@ -14,6 +14,8 @@ export class GdmLiveAudio extends LitElement {
   @state() error = '';
   @state() products: any[] = [];
   @state() showProducts = false;
+  @state() showCelebration = false;
+  @state() addedProduct = '';
 
   private client: GoogleGenAI;
   private session: Session;
@@ -103,15 +105,15 @@ export class GdmLiveAudio extends LitElement {
     }
     
     .product-header {
-      background: rgba(0, 0, 0, 0.8);
+      background: rgba(0, 0, 0, 0.6);
       color: white;
       padding: 15px;
       border-radius: 15px;
       text-align: center;
       font-weight: bold;
       font-size: 18px;
-      backdrop-filter: blur(10px);
-      border: 2px solid rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(15px);
+      border: 2px solid rgba(255, 255, 255, 0.3);
     }
     
     .product-grid {
@@ -121,14 +123,13 @@ export class GdmLiveAudio extends LitElement {
     }
     
     .product-bubble {
-      background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(240, 240, 255, 0.9));
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.85), rgba(240, 240, 255, 0.75));
       border-radius: 20px;
       padding: 20px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-      backdrop-filter: blur(10px);
-      border: 2px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(15px);
+      border: 2px solid rgba(255, 255, 255, 0.4);
       transition: all 0.3s ease;
-      cursor: pointer;
       animation: bubbleIn 0.6s ease-out forwards;
       opacity: 0;
       transform: scale(0.8);
@@ -143,8 +144,8 @@ export class GdmLiveAudio extends LitElement {
     
     .product-bubble:hover {
       transform: translateY(-5px);
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
-      background: linear-gradient(135deg, rgba(255, 255, 255, 1), rgba(250, 250, 255, 0.95));
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(250, 250, 255, 0.85));
     }
     
     .product-name {
@@ -196,6 +197,122 @@ export class GdmLiveAudio extends LitElement {
     
     .close-products:hover {
       background: rgba(255, 0, 0, 1);
+    }
+    
+    .product-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    
+    .select-btn {
+      flex: 1;
+      background: linear-gradient(135deg, #007bff, #0056b3);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 10px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 14px;
+    }
+    
+    .select-btn:hover {
+      background: linear-gradient(135deg, #0056b3, #003d82);
+      transform: translateY(-2px);
+    }
+    
+    .add-cart-btn {
+      flex: 1;
+      background: linear-gradient(135deg, #28a745, #1e7e34);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 10px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 14px;
+    }
+    
+    .add-cart-btn:hover {
+      background: linear-gradient(135deg, #1e7e34, #155724);
+      transform: translateY(-2px);
+    }
+    
+    .add-cart-btn:disabled {
+      background: linear-gradient(135deg, #6c757d, #5a6268);
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .celebration-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.7);
+      animation: fadeIn 0.3s ease-out;
+    }
+    
+    .celebration-card {
+      background: linear-gradient(135deg, #28a745, #20c997);
+      color: white;
+      padding: 30px;
+      border-radius: 20px;
+      text-align: center;
+      box-shadow: 0 10px 50px rgba(0, 0, 0, 0.3);
+      animation: celebrationBounce 0.6s ease-out;
+      max-width: 400px;
+      width: 90%;
+    }
+    
+    .celebration-icon {
+      font-size: 60px;
+      margin-bottom: 20px;
+      animation: spin 0.8s ease-in-out;
+    }
+    
+    .celebration-text {
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    
+    .celebration-product {
+      font-size: 18px;
+      opacity: 0.9;
+      margin-bottom: 20px;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    @keyframes celebrationBounce {
+      0% { 
+        opacity: 0;
+        transform: scale(0.3) translateY(-50px);
+      }
+      50% {
+        transform: scale(1.1) translateY(-10px);
+      }
+      100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
   `;
 
@@ -386,6 +503,42 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
     }
   }
 
+  private async addToCart(product: any, event: Event) {
+    event.stopPropagation(); // Prevent product selection when clicking add to cart
+    
+    try {
+      // Import the addToCart function dynamically
+      const { addToCart } = await import('./lib/productService');
+      
+      // Add to cart with quantity 1
+      const response = await addToCart(product.id, 1);
+      
+      if (response && response.message=="success") {
+        // Show celebration
+        this.addedProduct = product.name;
+        this.showCelebration = true;
+        this.requestUpdate();
+
+        setTimeout(() => {
+          this.showCelebration = false;
+          this.requestUpdate();
+        }, 3000);
+        
+        console.log("✅ Product added to cart successfully:", product.name);
+      } else {
+        this.updateError(`Failed to add ${product.name} to cart`);
+      }
+    } catch (error) {
+      console.error("❌ Error adding to cart:", error);
+      this.updateError(`Error adding ${product.name} to cart`);
+    }
+  }
+
+  private hideCelebration() {
+    this.showCelebration = false;
+    this.requestUpdate();
+  }
+
   private async startRecording() {
     await this.recordingService.startRecording();
   }
@@ -423,16 +576,30 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
             <div class="product-grid">
               ${this.products.map((product, index) => html`
                 <div class="product-bubble" 
-                     @click=${() => this.selectProduct(product)}
                      style="animation-delay: ${index * 0.1}s">
                   ${product.image ? html`
                     <img class="product-image" src="${product.image}" alt="${product.name}" />
                   ` : ''}
                   <div class="product-name">${product.name}</div>
                   <div class="product-price">₹${product.price}</div>
-                  <div class="product-id">ID: ${product.id}</div>
+                  <div class="product-actions">
+                    <button class="add-cart-btn" @click=${(e: Event) => this.addToCart(product, e)}>
+                      🛒 Add to Cart
+                    </button>
+                  </div>
                 </div>
               `)}
+            </div>
+          </div>
+        ` : ''}
+        
+        ${this.showCelebration ? html`
+          <div class="celebration-overlay" @click=${this.hideCelebration}>
+            <div class="celebration-card">
+              <div class="celebration-icon">🎉</div>
+              <div class="celebration-text">Added to Cart!</div>
+              <div class="celebration-product">${this.addedProduct}</div>
+              <div>Tap anywhere to continue</div>
             </div>
           </div>
         ` : ''}
