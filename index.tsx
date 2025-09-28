@@ -51,33 +51,86 @@ export class GdmLiveAudio extends LitElement {
     .controls {
       z-index: 10;
       position: absolute;
-      bottom: 10vh;
+      bottom: 8vh;
       left: 0;
       right: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      flex-direction: column;
-      gap: 10px;
+      flex-direction: row;
+      gap: 15px;
+      padding: 0 20px;
     }
+    
     .controls button {
       outline: none;
-      border: 1px solid rgba(52, 42, 42, 0.2);
+      border: 2px solid rgba(255, 255, 255, 0.3);
       color: white;
-      border-radius: 12px;
-      background: rgba(186, 50, 50, 0.1);
-      width: 64px;
-      height: 64px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(0, 123, 255, 0.8), rgba(40, 167, 69, 0.8));
+      width: 70px;
+      height: 70px;
       cursor: pointer;
-      font-size: 24px;
+      font-size: 28px;
       padding: 0;
       margin: 0;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
     }
+    
     .controls button:hover {
-      background: rgba(255, 255, 255, 0.2);
+      background: linear-gradient(135deg, rgba(0, 123, 255, 0.9), rgba(40, 167, 69, 0.9));
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
     }
+    
     .controls button[disabled] {
       display: none;
+    }
+    
+    /* Mobile-specific button improvements */
+    @media (max-width: 768px) {
+      .controls {
+        bottom: 5vh;
+        gap: 20px;
+        padding: 0 15px;
+        flex-direction: row;
+      }
+      
+      .controls button {
+        width: 85px;
+        height: 85px;
+        font-size: 32px;
+        border-radius: 22px;
+        border: 3px solid rgba(255, 255, 255, 0.4);
+        background: linear-gradient(135deg, rgba(0, 123, 255, 0.85), rgba(40, 167, 69, 0.85));
+        box-shadow: 
+          0 8px 25px rgba(0, 0, 0, 0.4),
+          0 4px 12px rgba(0, 0, 0, 0.3),
+          inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        backdrop-filter: blur(15px);
+      }
+      
+      .controls button:active {
+        transform: translateY(1px) scale(0.95);
+        box-shadow: 
+          0 4px 15px rgba(0, 0, 0, 0.5),
+          0 2px 8px rgba(0, 0, 0, 0.4);
+      }
+      
+      .controls button:hover {
+        background: linear-gradient(135deg, rgba(0, 123, 255, 0.95), rgba(40, 167, 69, 0.95));
+      }
+    }
+    
+    /* Extra large mobile screens */
+    @media (max-width: 480px) {
+      .controls button {
+        width: 90px;
+        height: 90px;
+        font-size: 34px;
+      }
     }
     
     .product-overlay {
@@ -121,20 +174,55 @@ export class GdmLiveAudio extends LitElement {
     .product-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 12px;
+      gap: 15px;
+      padding: 0 5px;
+    }
+    
+    /* Mobile-specific grid improvements */
+    @media (max-width: 768px) {
+      .product-grid {
+        grid-template-columns: 1fr;
+        gap: 18px;
+        padding: 0 10px;
+        max-width: 100%;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .product-grid {
+        gap: 20px;
+        padding: 0 8px;
+      }
     }
     
     .product-bubble {
-      background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(240, 240, 255, 0.1));
-      border-radius: 16px;
-      padding: 16px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.25), rgba(240, 240, 255, 0.2));
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.15);
+      backdrop-filter: blur(25px);
+      border: 1.5px solid rgba(255, 255, 255, 0.3);
       transition: all 0.3s ease;
       animation: bubbleIn 0.6s ease-out forwards;
       opacity: 0;
       transform: scale(0.8);
+      position: relative;
+    }
+    
+    /* Mobile-specific improvements for product cards */
+    @media (max-width: 768px) {
+      .product-bubble {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.35), rgba(240, 240, 255, 0.3));
+        border-radius: 22px;
+        padding: 24px;
+        box-shadow: 
+          0 12px 40px rgba(0, 0, 0, 0.25),
+          0 6px 20px rgba(0, 0, 0, 0.2),
+          inset 0 1px 0 rgba(255, 255, 255, 0.4);
+        backdrop-filter: blur(30px);
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        margin-bottom: 8px;
+      }
     }
     
     @keyframes bubbleIn {
@@ -145,45 +233,107 @@ export class GdmLiveAudio extends LitElement {
     }
     
     .product-bubble:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-      background: linear-gradient(135deg, rgba(255, 255, 255, 0.25), rgba(250, 250, 255, 0.2));
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      transform: translateY(-5px);
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.2);
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.35), rgba(250, 250, 255, 0.3));
+      border: 1.5px solid rgba(255, 255, 255, 0.4);
+    }
+    
+    /* Mobile touch feedback */
+    @media (max-width: 768px) {
+      .product-bubble:active {
+        transform: translateY(-2px) scale(0.98);
+        box-shadow: 
+          0 8px 25px rgba(0, 0, 0, 0.3),
+          0 4px 15px rgba(0, 0, 0, 0.25);
+      }
     }
     
     .product-name {
-      font-size: 15px;
+      font-size: 16px;
       font-weight: 600;
       color: rgba(255, 255, 255, 0.95);
-      margin-bottom: 6px;
-      line-height: 1.2;
+      margin-bottom: 8px;
+      line-height: 1.3;
       text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
     }
     
     .product-price {
-      font-size: 18px;
+      font-size: 20px;
       font-weight: bold;
       color: rgba(0, 123, 255, 0.9);
-      margin-bottom: 8px;
+      margin-bottom: 10px;
       text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
     }
     
     .product-id {
-      font-size: 11px;
+      font-size: 12px;
       color: rgba(255, 255, 255, 0.6);
       opacity: 0.8;
     }
     
     .product-image {
-      width: 45px;
-      height: 45px;
-      border-radius: 8px;
+      width: 50px;
+      height: 50px;
+      border-radius: 10px;
       object-fit: cover;
       margin-bottom: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      border: 2px solid rgba(255, 255, 255, 0.3);
       float: right;
-      margin-left: 10px;
+      margin-left: 12px;
       margin-top: 0;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+    
+    /* Mobile-specific text improvements */
+    @media (max-width: 768px) {
+      .product-name {
+        font-size: 18px;
+        font-weight: 700;
+        margin-bottom: 10px;
+        line-height: 1.4;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+      }
+      
+      .product-price {
+        font-size: 22px;
+        font-weight: 800;
+        margin-bottom: 12px;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        color: rgba(0, 123, 255, 1);
+      }
+      
+      .product-id {
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.7);
+      }
+      
+      .product-image {
+        width: 60px;
+        height: 60px;
+        border-radius: 12px;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        margin-left: 15px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .product-name {
+        font-size: 19px;
+        margin-bottom: 12px;
+      }
+      
+      .product-price {
+        font-size: 24px;
+        margin-bottom: 14px;
+      }
+      
+      .product-image {
+        width: 65px;
+        height: 65px;
+        border-radius: 14px;
+      }
     }
     
     .close-products {
@@ -211,8 +361,8 @@ export class GdmLiveAudio extends LitElement {
     
     .product-actions {
       display: flex;
-      gap: 6px;
-      margin-top: 12px;
+      gap: 8px;
+      margin-top: 15px;
       clear: both;
     }
     
@@ -221,45 +371,90 @@ export class GdmLiveAudio extends LitElement {
       background: linear-gradient(135deg, rgba(0, 123, 255, 0.8), rgba(0, 86, 179, 0.8));
       color: white;
       border: none;
-      border-radius: 8px;
-      padding: 8px 6px;
+      border-radius: 10px;
+      padding: 10px 8px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.3s ease;
-      font-size: 12px;
+      font-size: 13px;
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     }
     
     .select-btn:hover {
       background: linear-gradient(135deg, rgba(0, 86, 179, 0.9), rgba(0, 61, 130, 0.9));
-      transform: translateY(-1px);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
     
     .add-cart-btn {
       flex: 1;
-      background: linear-gradient(135deg, rgba(40, 167, 69, 0.8), rgba(30, 126, 52, 0.8));
+      background: linear-gradient(135deg, rgba(40, 167, 69, 0.85), rgba(30, 126, 52, 0.85));
       color: white;
       border: none;
-      border-radius: 8px;
-      padding: 8px 6px;
+      border-radius: 10px;
+      padding: 10px 8px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.3s ease;
-      font-size: 12px;
+      font-size: 13px;
       backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     }
     
     .add-cart-btn:hover {
-      background: linear-gradient(135deg, rgba(30, 126, 52, 0.9), rgba(21, 87, 36, 0.9));
-      transform: translateY(-1px);
+      background: linear-gradient(135deg, rgba(30, 126, 52, 0.95), rgba(21, 87, 36, 0.95));
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
     
     .add-cart-btn:disabled {
       background: linear-gradient(135deg, rgba(108, 117, 125, 0.6), rgba(90, 98, 104, 0.6));
       cursor: not-allowed;
       transform: none;
+      box-shadow: none;
+    }
+    
+    /* Mobile-specific button improvements */
+    @media (max-width: 768px) {
+      .product-actions {
+        gap: 10px;
+        margin-top: 18px;
+        flex-direction: column;
+      }
+      
+      .select-btn, .add-cart-btn {
+        padding: 14px 12px;
+        font-size: 16px;
+        border-radius: 12px;
+        font-weight: 700;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        box-shadow: 
+          0 4px 15px rgba(0, 0, 0, 0.25),
+          0 2px 8px rgba(0, 0, 0, 0.2),
+          inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      }
+      
+      .add-cart-btn {
+        background: linear-gradient(135deg, rgba(40, 167, 69, 0.9), rgba(30, 126, 52, 0.9));
+      }
+      
+      .select-btn:active, .add-cart-btn:active {
+        transform: translateY(1px) scale(0.98);
+        box-shadow: 
+          0 2px 8px rgba(0, 0, 0, 0.3),
+          0 1px 4px rgba(0, 0, 0, 0.25);
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .select-btn, .add-cart-btn {
+        padding: 16px 14px;
+        font-size: 17px;
+        border-radius: 14px;
+      }
     }
     
     .celebration-overlay {
