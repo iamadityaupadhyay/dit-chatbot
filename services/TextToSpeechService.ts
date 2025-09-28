@@ -131,8 +131,6 @@ export class TextToSpeechService {
   }
 
   private fallbackToBrowserTTS(text: string): void {
-    
-    
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 1.0;
