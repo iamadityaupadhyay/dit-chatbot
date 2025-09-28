@@ -1,9 +1,9 @@
-import { GoogleGenAI, LiveServerMessage, Modality, Session } from '@google/genai';
+import { GoogleGenAI, LiveServerMessage, Modality, Session, Type } from '@google/genai';
 import { LitElement, css, html } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { createBlob } from './utils';
 import './visual-3d';
-import { addToCart, searchProducts } from './lib/productService';
+import { MessageHandler } from './handlers/MessageHandler';
 import axios from 'axios';
 
 @customElement('gdm-live-audio')
@@ -41,6 +41,12 @@ export class GdmLiveAudio extends LitElement {
   private readonly RETRY_ATTEMPTS = 3; // Number of retries for Murf API
   private recentTexts: Set<string> = new Set(); // For deduplication
 
+  // TTS Configuration
+  private USE_SSML = false;
+
+  // Message Handler
+  private messageHandler = new MessageHandler();
+
   // Tools for function calling
   private tools = [
     {
@@ -49,10 +55,10 @@ export class GdmLiveAudio extends LitElement {
           name: "search_products",
           description: "Search for products by name to find matching items for ordering.",
           parameters: {
-            type: "object",
+            type: Type.OBJECT,
             properties: {
               query: {
-                type: "string",
+                type: Type.STRING,
                 description: "The exact product name or keyword to search for."
               }
             },
@@ -63,14 +69,14 @@ export class GdmLiveAudio extends LitElement {
           name: "add_to_cart",
           description: "Add a specific product to the user's cart with a given quantity.",
           parameters: {
-            type: "object",
+            type: Type.OBJECT,
             properties: {
               productId: {
-                type: "string",
+                type: Type.STRING,
                 description: "The unique ID of the product to add."
               },
               quantity: {
-                type: "number",
+                type: Type.NUMBER,
                 description: "The quantity of the product to add (must be a positive integer)."
               }
             },
@@ -136,91 +142,26 @@ export class GdmLiveAudio extends LitElement {
     this.initSession();
   }
 
+  private async handleMessage(message: LiveServerMessage): Promise<void> {
+    await this.messageHandler.handleMessage(
+      message,
+      (text: string) => this.interruptAndBuffer(text),
+      (error: string) => {
+        this.updateError(error);
+        this.interruptAndSpeak("Sorry, something went wrong. Please try again.");
+      }
+    );
+  }
+
   private async initSession() {
     try {
       this.session = await this.client.live.connect({
         model: "gemini-live-2.5-flash-preview",
-        tools: this.tools,
         callbacks: {
           onopen: () => {
             this.updateStatus('Opened');
           },
-          onmessage: async (message: LiveServerMessage) => {
-            console.log("Received message:", JSON.stringify(message, null, 2));
-            try {
-              // Handle tool calls
-              if (message.toolCall) {
-                const functionResponses = [];
-                for (const fc of message.toolCall.functionCalls) {
-                  console.log(`Processing tool call: ${fc.name}`, fc.args);
-                  let result: any;
-
-                  if (fc.name === "search_products") {
-                    const args = fc.args || {};
-                    const query = args.query || '';
-                    console.log("Searching for:", query);
-                    let products = await searchProducts(query);
-                    console.log("Raw searchProducts response:", products);
-                    if (products && products.data && products.data.length > 0) {
-                      products = products.data.slice(0, 2).map((p: any) => ({
-                        id: p.id,
-                        name: p.name,
-                        price: Math.round(p.base_mrp),
-                        isAvailable: true
-                      }));
-                      console.log("Processed products:", products);
-                      result = { products: products.filter((p: any) => p.isAvailable) };
-                    } else {
-                      result = { products: [], message: `No available products found for "${query}"` };
-                    }
-                  } else if (fc.name === "add_to_cart") {
-                    const args = fc.args || {};
-                    console.log("Add to Cart Args:", args);
-                    const quantity = Math.max(1, Math.floor(args?.quantity || 1));
-                    try {
-                      const addResponse = await addToCart(args.productId, quantity);
-                      console.log("Add to Cart Response:", addResponse);
-                      if (addResponse.status_code === 0 && addResponse.message === "This item is out of stock. please try later") {
-                        result = { success: false, message: "This item is out of stock." };
-                      } else {
-                        result = { success: true, message: `Added ${args.productName || 'product'} to cart successfully` };
-                      }
-                    } catch (err) {
-                      console.error("Add to Cart Error:", err);
-                      result = { success: false, message: `Failed to add ${args.productName || 'product'} to cart` };
-                    }
-                  } else {
-                    result = { error: "Unknown tool" };
-                  }
-
-                  functionResponses.push({
-                    id: fc.id,
-                    name: fc.name,
-                    response: {
-                      result: result
-                    }
-                  });
-                }
-                if (functionResponses.length > 0) {
-                  console.log("Sending tool response:", functionResponses);
-                  this.session.sendToolResponse({ functionResponses });
-                }
-              }
-
-              const parts = message.serverContent?.modelTurn?.parts || [];
-              for (const part of parts) {
-                if (part.text) {
-                  const text = part.text.trim();
-                  console.log("Gemini TEXT:", text);
-                  this.interruptAndBuffer(text);
-                }
-              }
-            } catch (err) {
-              console.error("Error in onmessage:", err);
-              this.updateError(err.message || "Unknown error");
-              this.interruptAndSpeak("Sorry, something went wrong. Please try again.");
-            }
-          },
+          onmessage: (message: LiveServerMessage) => this.handleMessage(message),
           onerror: (e: ErrorEvent) => {
             this.updateError(e.message);
           },
@@ -249,6 +190,9 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
 }
         },
       });
+
+      // Set the session in the message handler
+      this.messageHandler.setSession(this.session);
     } catch (e) {
       console.error(e);
       this.updateError("Failed to initialize session");
@@ -422,6 +366,25 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
     });
 
     await this.processAudioQueue();
+  }
+
+  private fallbackToBrowserTTS(text: string): void {
+    console.log("🎵 Using browser TTS as fallback:", text);
+    
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+      
+      utterance.onstart = () => console.log("🔊 Browser TTS started");
+      utterance.onend = () => console.log("🔊 Browser TTS ended");
+      utterance.onerror = (e) => console.error("❌ Browser TTS error:", e);
+      
+      speechSynthesis.speak(utterance);
+    } else {
+      console.warn("⚠️ Browser speech synthesis not available");
+    }
   }
 
   private updateStatus(msg: string) {
