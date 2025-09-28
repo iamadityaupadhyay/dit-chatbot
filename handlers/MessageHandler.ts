@@ -4,6 +4,7 @@ import { searchProducts, addToCart } from '../lib/productService';
 export class MessageHandler {
   private session: Session | null = null;
   private onProductsReceived?: (products: any[]) => void;
+  private onCartItemAdded?: (productName: string, quantity: number) => void;
 
   setSession(session: Session): void {
     this.session = session;
@@ -11,6 +12,10 @@ export class MessageHandler {
 
   setProductCallback(callback: (products: any[]) => void): void {
     this.onProductsReceived = callback;
+  }
+
+  setCartCallback(callback: (productName: string, quantity: number) => void): void {
+    this.onCartItemAdded = callback;
   }
 
   async handleMessage(
@@ -139,6 +144,7 @@ export class MessageHandler {
     }
 
     const quantity = Math.max(1, Math.floor(Number(args?.quantity) || 1));
+    const productName = args.productName || 'product';
     
     try {
       const addResponse = await addToCart(args.productId, quantity);
@@ -147,9 +153,14 @@ export class MessageHandler {
       if (addResponse.status_code === 0 && addResponse.message === "This item is out of stock. please try later") {
         return { success: false, message: "This item is out of stock." };
       } else {
+        // Trigger celebration callback for AI cart additions
+        if (this.onCartItemAdded) {
+          this.onCartItemAdded(productName, quantity);
+        }
+        
         return { 
           success: true, 
-          message: `Added ${args.productName || 'product'} to cart successfully`,
+          message: `Added ${productName} to cart successfully`,
           quantity: quantity
         };
       }
@@ -157,7 +168,7 @@ export class MessageHandler {
       console.error("❌ Add to Cart Error:", err);
       return { 
         success: false, 
-        message: `Failed to add ${args.productName || 'product'} to cart: ${err.message}` 
+        message: `Failed to add ${productName} to cart: ${err.message}` 
       };
     }
   }

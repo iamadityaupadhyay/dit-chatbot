@@ -270,45 +270,106 @@ export class GdmLiveAudio extends LitElement {
       bottom: 0;
       z-index: 20;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
-      background: rgba(0, 0, 0, 0.7);
+      padding-top: 20vh;
+      background: rgba(0, 0, 0, 0.6);
       animation: fadeIn 0.3s ease-out;
+      overflow: hidden;
     }
     
     .celebration-card {
       background: linear-gradient(135deg, #28a745, #20c997);
       color: white;
-      padding: 30px;
-      border-radius: 20px;
+      padding: 20px 25px;
+      border-radius: 18px;
       text-align: center;
-      box-shadow: 0 10px 50px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
       animation: celebrationBounce 0.6s ease-out;
-      max-width: 400px;
-      width: 90%;
+      max-width: 280px;
+      width: auto;
+      position: relative;
+      z-index: 21;
+      border: 2px solid rgba(255, 255, 255, 0.2);
     }
     
     .celebration-icon {
-      font-size: 60px;
-      margin-bottom: 20px;
-      animation: spin 0.8s ease-in-out;
+      font-size: 36px;
+      margin-bottom: 8px;
+      animation: bounce 1s infinite;
     }
     
     .celebration-text {
-      font-size: 24px;
+      font-size: 18px;
       font-weight: bold;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
     }
     
     .celebration-product {
-      font-size: 18px;
-      opacity: 0.9;
-      margin-bottom: 20px;
+      font-size: 14px;
+      opacity: 0.95;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.25);
+      padding: 6px 12px;
+      border-radius: 10px;
+      margin-bottom: 0;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
     }
+    
+    /* Confetti Animation */
+    .confetti {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background: #ff6b6b;
+      border-radius: 50%;
+      animation: confettiFall 2.5s linear infinite;
+    }
+    
+    .confetti:nth-child(1) { left: 15%; animation-delay: -0.3s; background: #4ecdc4; }
+    .confetti:nth-child(2) { left: 25%; animation-delay: -0.6s; background: #45b7d1; }
+    .confetti:nth-child(3) { left: 35%; animation-delay: -0.9s; background: #96ceb4; }
+    .confetti:nth-child(4) { left: 45%; animation-delay: -1.2s; background: #feca57; }
+    .confetti:nth-child(5) { left: 55%; animation-delay: -1.5s; background: #ff9ff3; }
+    .confetti:nth-child(6) { left: 65%; animation-delay: -1.8s; background: #54a0ff; }
+    .confetti:nth-child(7) { left: 75%; animation-delay: -2.1s; background: #5f27cd; }
+    .confetti:nth-child(8) { left: 85%; animation-delay: -2.4s; background: #00d2d3; }
+    .confetti:nth-child(9) { left: 20%; animation-delay: -0.7s; background: #ff6348; }
+    .confetti:nth-child(10) { left: 30%; animation-delay: -1.0s; background: #2ed573; }
+    .confetti:nth-child(11) { left: 40%; animation-delay: -1.3s; background: #ffa502; }
+    .confetti:nth-child(12) { left: 50%; animation-delay: -1.6s; background: #3742fa; }
+    .confetti:nth-child(13) { left: 60%; animation-delay: -1.9s; background: #ff4757; }
+    .confetti:nth-child(14) { left: 70%; animation-delay: -2.2s; background: #7bed9f; }
+    .confetti:nth-child(15) { left: 80%; animation-delay: -2.5s; background: #70a1ff; }
     
     @keyframes fadeIn {
       from { opacity: 0; }
       to { opacity: 1; }
+    }
+    
+    @keyframes confettiFall {
+      0% {
+        transform: translateY(-100vh) rotate(0deg);
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(100vh) rotate(720deg);
+        opacity: 0;
+      }
+    }
+    
+    @keyframes bounce {
+      0%, 20%, 50%, 80%, 100% {
+        transform: translateY(0);
+      }
+      40% {
+        transform: translateY(-10px);
+      }
+      60% {
+        transform: translateY(-5px);
+      }
     }
     
     @keyframes celebrationBounce {
@@ -317,17 +378,12 @@ export class GdmLiveAudio extends LitElement {
         transform: scale(0.3) translateY(-50px);
       }
       50% {
-        transform: scale(1.1) translateY(-10px);
+        transform: scale(1.05) translateY(-10px);
       }
       100% {
         opacity: 1;
         transform: scale(1) translateY(0);
       }
-    }
-    
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
     }
   `;
 
@@ -357,6 +413,11 @@ export class GdmLiveAudio extends LitElement {
     // Set up product display callback
     this.messageHandler.setProductCallback((products: any[]) => {
       this.showProductList(products);
+    });
+    
+    // Set up cart callback for AI additions
+    this.messageHandler.setCartCallback((productName: string, quantity: number) => {
+      this.showCelebrationForProduct(productName);
     });
     
     this.initSession();
@@ -412,7 +473,7 @@ When listing products, use natural conversational patterns:
 - Do NOT use numbered lists like "1.", "2.", "3." in your responses.
 - After listing, ask "Which one would you like?"
 
-Wait for the user to specify which one (by name or number). After selection, ask for the quantity (e.g., "How many would you like?"). After getting the quantity, use the add_to_cart tool with the productId and quantity. If the tool returns success: false with a message (e.g., "This item is out of stock"), say "Sorry, [product name] is out of stock. Would you like to try another product?" If successful, confirm with "I am adding <phoneme alphabet='ipa' ph='ˈɑːmul'>Amul</phoneme> to your cart now!" for Amul, or "I am adding [product name] to your cart now!" for others.
+Wait for the user to specify which one (by name or number). After selection, ask for the quantity (e.g., "How many would you like?"). After getting the quantity, use the add_to_cart tool with the productId, productName, and quantity. ALWAYS include the exact product name when calling add_to_cart. If the tool returns success: false with a message (e.g., "This item is out of stock"), say "Sorry, [product name] is out of stock. Would you like to try another product?" If successful, confirm with "I am adding <phoneme alphabet='ipa' ph='ˈɑːmul'>Amul</phoneme> to your cart now!" for Amul, or "I am adding [product name] to your cart now!" for others.
 
 ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more," "other products," or similar, reset the current product selection and ask, "Awesome! What other product would you like to order?" Then restart the ordering flow with search_products. Do not reuse previous product IDs unless explicitly requested. After adding an item, always ask, "Would you like to add more items to your cart?"
 
@@ -614,6 +675,19 @@ MANUAL CART ADDITIONS: When you receive a tool response indicating a manual cart
     }
   }
 
+  private showCelebrationForProduct(productName: string) {
+    console.log('🎉 Showing celebration for product:', productName);
+    this.addedProduct = productName;
+    this.showCelebration = true;
+    this.requestUpdate();
+
+    // Auto-hide celebration after 3 seconds
+    setTimeout(() => {
+      this.showCelebration = false;
+      this.requestUpdate();
+    }, 3000);
+  }
+
   private hideCelebration() {
     this.showCelebration = false;
     this.requestUpdate();
@@ -679,10 +753,27 @@ MANUAL CART ADDITIONS: When you receive a tool response indicating a manual cart
         
         ${this.showCelebration ? html`
           <div class="celebration-overlay" @click=${this.hideCelebration}>
+            <!-- Confetti elements -->
+            <div class="confetti"></div>
+            <div class="confetti"></div>
+            <div class="confetti"></div>
+            <div class="confetti"></div>
+            <div class="confetti"></div>
+            <div class="confetti"></div>
+            <div class="confetti"></div>
+            <div class="confetti"></div>
+            <div class="confetti"></div>
+            <div class="confetti"></div>
+            <div class="confetti"></div>
+            <div class="confetti"></div>
+            <div class="confetti"></div>
+            <div class="confetti"></div>
+            <div class="confetti"></div>
+            
             <div class="celebration-card">
               <div class="celebration-icon">🎉</div>
               <div class="celebration-text">Added to Cart!</div>
-              <div class="celebration-product">${this.addedProduct}</div>
+              <div class="celebration-product">${this.addedProduct || 'Product'}</div>
             </div>
           </div>
         ` : ''}
