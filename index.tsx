@@ -1,10 +1,11 @@
 import { GoogleGenAI, LiveServerMessage, Modality, Session, Type } from '@google/genai';
 import { LitElement, css, html } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { createBlob } from './utils';
 import './visual-3d';
-import { MessageHandler } from './handlers/MessageHandler';
-import axios from 'axios';
+import { MessageHandler } from './handlers';
+import { TextToSpeechService, RecordingService } from './services';
+import type { RecordingCallbacks } from './services';
+import geminiTools from './lib/config';
 
 @customElement('gdm-live-audio')
 export class GdmLiveAudio extends LitElement {
@@ -14,78 +15,24 @@ export class GdmLiveAudio extends LitElement {
 
   private client: GoogleGenAI;
   private session: Session;
-  private inputAudioContext = new (window.AudioContext ||
-    (window as any).webkitAudioContext)({ sampleRate: 16000 });
   private outputAudioContext = new (window.AudioContext ||
     (window as any).webkitAudioContext)({ sampleRate: 24000 });
-  @state() inputNode = this.inputAudioContext.createGain();
   @state() outputNode = this.outputAudioContext.createGain();
-  private mediaStream: MediaStream;
-  private sourceNode: MediaStreamAudioSourceNode;
-  private scriptProcessorNode: ScriptProcessorNode;
-
-  // Track current audio source for interruption
-  private currentAudioSource: AudioBufferSourceNode | null = null;
-
-  // ====== MURF AI CONFIG ======
-  private MURF_API_KEY = "ap2_10a62c3e-ef81-4e04-996e-191e4fdab276";
-  private MURF_VOICE_ID = "en-US-natalie";
 
   // Text and audio queue management
   private textBuffer: string[] = [];
-  private audioQueue: AudioBufferSourceNode[] = [];
-  private isSpeaking = false;
   private bufferTimeout: number | null = null;
   private readonly BUFFER_FLUSH_TIMEOUT = 800; // Increased to 800ms
   private readonly MAX_BUFFER_LENGTH = 500; // Max characters in buffer
-  private readonly RETRY_ATTEMPTS = 3; // Number of retries for Murf API
   private recentTexts: Set<string> = new Set(); // For deduplication
 
-  // TTS Configuration
-  private USE_SSML = false;
-
-  // Message Handler
+  // Services
   private messageHandler = new MessageHandler();
+  private ttsService: TextToSpeechService;
+  private recordingService: RecordingService;
 
   // Tools for function calling
-  private tools = [
-    {
-      functionDeclarations: [
-        {
-          name: "search_products",
-          description: "Search for products by name to find matching items for ordering.",
-          parameters: {
-            type: Type.OBJECT,
-            properties: {
-              query: {
-                type: Type.STRING,
-                description: "The exact product name or keyword to search for."
-              }
-            },
-            required: ["query"]
-          }
-        },
-        {
-          name: "add_to_cart",
-          description: "Add a specific product to the user's cart with a given quantity.",
-          parameters: {
-            type: Type.OBJECT,
-            properties: {
-              productId: {
-                type: Type.STRING,
-                description: "The unique ID of the product to add."
-              },
-              quantity: {
-                type: Type.NUMBER,
-                description: "The quantity of the product to add (must be a positive integer)."
-              }
-            },
-            required: ["productId", "quantity"]
-          }
-        }
-      ]
-    }
-  ];
+  private tools = geminiTools;
 
   static styles = css`
     #status {
@@ -139,6 +86,19 @@ export class GdmLiveAudio extends LitElement {
       apiKey: process.env.GEMINI_API_KEY,
     });
     this.outputNode.connect(this.outputAudioContext.destination);
+    
+    // Initialize services
+    this.ttsService = new TextToSpeechService(this.outputAudioContext, this.outputNode);
+    
+    // Initialize recording service with callbacks
+    const recordingCallbacks: RecordingCallbacks = {
+      onStatusUpdate: (status: string) => this.updateStatus(status),
+      onErrorUpdate: (error: string) => this.updateError(error),
+      onRecordingStateChange: (isRecording: boolean) => this.isRecording = isRecording,
+      onFlushBuffer: () => this.flushBuffer(),
+    };
+    this.recordingService = new RecordingService(recordingCallbacks);
+    
     this.initSession();
   }
 
@@ -191,8 +151,9 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
         },
       });
 
-      // Set the session in the message handler
+      // Set the session in the message handler and recording service
       this.messageHandler.setSession(this.session);
+      this.recordingService.setSession(this.session);
     } catch (e) {
       console.error(e);
       this.updateError("Failed to initialize session");
@@ -200,15 +161,14 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
   }
 
   private async interruptAndSpeak(text: string): Promise<void> {
-    this.stopCurrentAudio();
-    this.audioQueue = [];
+    this.ttsService.stopCurrentAudio();
+    this.ttsService.clearQueue();
     this.textBuffer = [];
-    this.isSpeaking = false;
     if (this.bufferTimeout) {
       clearTimeout(this.bufferTimeout);
       this.bufferTimeout = null;
     }
-    await this.speakWithMurf(text);
+    await this.ttsService.speak(text);
   }
 
   private interruptAndBuffer(text: string): void {
@@ -223,8 +183,8 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
       this.recentTexts.delete(first);
     }
 
-    this.stopCurrentAudio();
-    this.audioQueue = [];
+    this.ttsService.stopCurrentAudio();
+    this.ttsService.clearQueue();
     this.textBuffer.push(text);
     const totalLength = this.textBuffer.join(' ').length;
 
@@ -240,18 +200,7 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
     }
   }
 
-  private stopCurrentAudio(): void {
-    if (this.currentAudioSource) {
-      try {
-        this.currentAudioSource.stop();
-        this.currentAudioSource.disconnect();
-      } catch (e) {
-        console.warn('Error stopping current audio:', e);
-      }
-      this.currentAudioSource = null;
-    }
-    this.isSpeaking = false;
-  }
+  // Removed - now handled by TTS service
 
   private async flushBuffer() {
     if (this.bufferTimeout) {
@@ -265,128 +214,9 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
     this.textBuffer = [];
 
     if (textToSpeak) {
-      await this.speakWithMurf(textToSpeak);
+      await this.ttsService.speak(textToSpeak);
     }
   }
-
-  private async speakWithMurf(text: string, attempt: number = 1): Promise<void> {
-  const maxRetries = this.RETRY_ATTEMPTS;
-  const delay = Math.pow(2, attempt - 1) * 1000; // Exponential backoff: 1s, 2s, 4s
-
-  try {
-    if (this.outputAudioContext.state === 'suspended') {
-      await this.outputAudioContext.resume();
-    }
-
-    const processedText = this.USE_SSML ? text : text.replace(/<[^>]*>/g, '');
-    console.log(`Murf API Call (Attempt ${attempt}/${maxRetries}): Text length=${processedText.length}, Voice=${this.MURF_VOICE_ID}`);
-
-    const response = await axios({
-      method: 'post',
-      url: 'https://api.murf.ai/v1/speech/generate',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': this.MURF_API_KEY,
-        "multiNativeLocale": "hi-IN"
-      },
-      data: JSON.stringify({
-        text: processedText,
-        voiceId: this.MURF_VOICE_ID,
-        model: "GEN2" // Ensure GEN2 model
-      })
-    });
-
-    console.log("Murf API Raw Response:", JSON.stringify(response.data, null, 2));
-
-    if (response.data.error) {
-      throw new Error(`Murf API Error: ${response.data.error.message || response.data.error}`);
-    }
-
-    if (!response.data || !response.data.audioFile) {
-      throw new Error(`Murf API failed: No audio file in response. Full data: ${JSON.stringify(response.data)}`);
-    }
-
-    const audioResponse = await fetch(response.data.audioFile);
-    if (!audioResponse.ok) {
-      throw new Error(`Failed to fetch audio: ${audioResponse.status} - ${audioResponse.statusText}`);
-    }
-
-    const arrayBuffer = await audioResponse.arrayBuffer();
-    const audioBuffer = await this.outputAudioContext.decodeAudioData(arrayBuffer);
-
-    const source = this.outputAudioContext.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(this.outputNode);
-
-    this.audioQueue.push(source);
-
-    if (!this.isSpeaking) {
-      this.processAudioQueue();
-    }
-  } catch (err) {
-    console.error(`TTS Error (Attempt ${attempt}/${maxRetries}):`, err);
-    if (attempt < maxRetries) {
-      console.log(`Retrying in ${delay}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return this.speakWithMurf(text, attempt + 1);
-    } else {
-      console.warn("Murf failed after retries; falling back to browser TTS");
-      this.fallbackToBrowserTTS(text);
-    }
-  }
-}
-
-  private async processAudioQueue() {
-    if (this.audioQueue.length === 0) {
-      this.isSpeaking = false;
-      this.currentAudioSource = null;
-      return;
-    }
-
-    this.isSpeaking = true;
-    const source = this.audioQueue.shift()!;
-
-    if (this.currentAudioSource && this.currentAudioSource !== source) {
-      try {
-        this.currentAudioSource.stop();
-        this.currentAudioSource.disconnect();
-      } catch (e) {
-        console.warn('Error stopping previous audio:', e);
-      }
-    }
-
-    this.currentAudioSource = source;
-
-    await new Promise<void>((resolve) => {
-      source.onended = () => {
-        this.currentAudioSource = null;
-        resolve();
-      };
-      source.start();
-    });
-
-    await this.processAudioQueue();
-  }
-
-  private fallbackToBrowserTTS(text: string): void {
-    console.log("🎵 Using browser TTS as fallback:", text);
-    
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-      utterance.volume = 1.0;
-      
-      utterance.onstart = () => console.log("🔊 Browser TTS started");
-      utterance.onend = () => console.log("🔊 Browser TTS ended");
-      utterance.onerror = (e) => console.error("❌ Browser TTS error:", e);
-      
-      speechSynthesis.speak(utterance);
-    } else {
-      console.warn("⚠️ Browser speech synthesis not available");
-    }
-  }
-
   private updateStatus(msg: string) {
     this.status = msg;
     this.requestUpdate();
@@ -398,63 +228,24 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
   }
 
   private async startRecording() {
-    if (this.isRecording) return;
-
-    await this.inputAudioContext.resume();
-    this.updateStatus('Requesting microphone access...');
-
-    try {
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      this.updateStatus('Microphone access granted.');
-
-      this.sourceNode = this.inputAudioContext.createMediaStreamSource(this.mediaStream);
-      this.sourceNode.connect(this.inputNode);
-
-      const bufferSize = 256;
-      this.scriptProcessorNode = this.inputAudioContext.createScriptProcessor(bufferSize, 1, 1);
-
-      this.scriptProcessorNode.onaudioprocess = (e) => {
-        if (!this.isRecording) return;
-        const pcmData = e.inputBuffer.getChannelData(0);
-        this.session.sendRealtimeInput({ media: createBlob(pcmData) });
-      };
-
-      this.sourceNode.connect(this.scriptProcessorNode);
-      this.scriptProcessorNode.connect(this.inputAudioContext.destination);
-
-      this.isRecording = true;
-      this.updateStatus('🔴 Recording...');
-    } catch (err) {
-      console.error('Mic error:', err);
-      this.updateStatus(`Error: ${err.message}`);
-      this.stopRecording();
-    }
+    await this.recordingService.startRecording();
   }
 
   private stopRecording() {
-    if (!this.isRecording) return;
-
-    this.isRecording = false;
-    this.scriptProcessorNode?.disconnect();
-    this.sourceNode?.disconnect();
-
-    if (this.mediaStream) {
-      this.mediaStream.getTracks().forEach((t) => t.stop());
-    }
-
-    this.updateStatus('Recording stopped.');
-    this.flushBuffer();
+    this.recordingService.stopRecording();
   }
 
   private reset() {
-    this.stopCurrentAudio();
-    this.audioQueue = [];
+    this.ttsService.stopCurrentAudio();
+    this.ttsService.clearQueue();
     this.textBuffer = [];
-    this.isSpeaking = false;
     if (this.bufferTimeout) {
       clearTimeout(this.bufferTimeout);
       this.bufferTimeout = null;
     }
+
+    // Reset recording service
+    this.recordingService.reset();
 
     this.session?.close();
     this.initSession();
@@ -471,7 +262,7 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
         </div>
         <div id="status">${this.error || this.status}</div>
         <gdm-live-audio-visuals-3d
-          .inputNode=${this.inputNode}
+          .inputNode=${this.recordingService?.getInputNode()}
           .outputNode=${this.outputNode}>
         </gdm-live-audio-visuals-3d>
       </div>
