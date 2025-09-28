@@ -16,6 +16,7 @@ export class GdmLiveAudio extends LitElement {
   @state() showProducts = false;
   @state() showCelebration = false;
   @state() addedProduct = '';
+  @state() addingToCart: Set<string> = new Set();
 
   private client: GoogleGenAI;
   private session: Session;
@@ -390,7 +391,9 @@ IMPORTANT: When performing actions, use these EXACT phrases:
 
 ORDERING FLOW: When the user expresses intent to order something (e.g., "I want to order [anything]"), extract the exact product name or keyword from their request. Use the search_products tool with that query to get available products (each with id, name, price, isAvailable). Only consider available products. If products is empty or no available products, say "Sorry, I couldn't find any available products for [query]. What else can I help with?" Then, list the matching products with their names and prices using SSML for proper formatting (e.g., "Great! I found these options: 1. <phoneme alphabet='ipa' ph='ˈɑːmul'>Amul</phoneme> for <say-as interpret-as='number'>[Math.round(price)]</say-as> rupees<break time='1s'/>, 2. ... Which one would you like?"). Wait for the user to specify which one (by name or number). After selection, ask for the quantity (e.g., "How many would you like?"). After getting the quantity, use the add_to_cart tool with the productId and quantity. If the tool returns success: false with a message (e.g., "This item is out of stock"), say "Sorry, [product name] is out of stock. Would you like to try another product?" If successful, confirm with "I am adding <phoneme alphabet='ipa' ph='ˈɑːmul'>Amul</phoneme> to your cart now!" for Amul, or "I am adding [product name] to your cart now!" for others.
 
-ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more," "other products," or similar, reset the current product selection and ask, "Awesome! What other product would you like to order?" Then restart the ordering flow with search_products. Do not reuse previous product IDs unless explicitly requested. After adding an item, always ask, "Would you like to add more items to your cart?"`
+ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more," "other products," or similar, reset the current product selection and ask, "Awesome! What other product would you like to order?" Then restart the ordering flow with search_products. Do not reuse previous product IDs unless explicitly requested. After adding an item, always ask, "Would you like to add more items to your cart?"
+
+MANUAL CART ADDITIONS: When you receive a tool response indicating a manual cart addition (source: "manual_ui_action"), acknowledge it warmly and ask if they want to continue shopping. For example: "Perfect! I can see you've added [product name] to your cart. That's ₹[price]. Would you like to add more products or proceed to checkout?"`
   }]
 }
         },
@@ -506,6 +509,10 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
   private async addToCart(product: any, event: Event) {
     event.stopPropagation(); // Prevent product selection when clicking add to cart
     
+    // Add loading state
+    this.addingToCart.add(product.id);
+    this.requestUpdate();
+    
     try {
       // Import the addToCart function dynamically
       const { addToCart } = await import('./lib/productService');
@@ -519,6 +526,9 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
         this.showCelebration = true;
         this.requestUpdate();
 
+        // Notify AI about the manual cart addition
+        this.notifyAIAboutCartAction(product);
+
         setTimeout(() => {
           this.showCelebration = false;
           this.requestUpdate();
@@ -531,6 +541,53 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
     } catch (error) {
       console.error("❌ Error adding to cart:", error);
       this.updateError(`Error adding ${product.name} to cart`);
+    } finally {
+      // Remove loading state
+      this.addingToCart.delete(product.id);
+      this.requestUpdate();
+    }
+  }
+
+  private async notifyAIAboutCartAction(product: any) {
+    try {
+      if (this.session) {
+        // Create a synthetic tool response to inform the AI about the manual cart addition
+        const toolResponse = {
+          functionResponses: [
+            {
+              id: `manual_cart_${Date.now()}`,
+              name: "add_to_cart",
+              response: {
+                result: {
+                  success: true,
+                  message: `User manually added ${product.name} to cart`,
+                  productName: product.name,
+                  productId: product.id,
+                  quantity: 1,
+                  price: product.price,
+                  source: "manual_ui_action"
+                }
+              }
+            }
+          ]
+        };
+
+        // Send the tool response to inform AI about the manual action
+        this.session.sendToolResponse(toolResponse);
+        
+        console.log("🤖 AI notified about manual cart addition:", product.name);
+        
+        // Give AI a moment to process, then provide acknowledgment
+        setTimeout(() => {
+          const acknowledgmentText = `Perfect! I can see you've added ${product.name} to your cart manually. That's ₹${product.price}. Would you like to add more products or shall we proceed to checkout?`;
+          this.interruptAndBuffer(acknowledgmentText);
+        }, 500);
+      }
+    } catch (error) {
+      console.error("❌ Error notifying AI about cart action:", error);
+      // Fallback acknowledgment if tool response fails
+      const fallbackText = `Great! You've added ${product.name} to your cart. Would you like to continue shopping or proceed with your order?`;
+      this.interruptAndBuffer(fallbackText);
     }
   }
 
@@ -583,8 +640,10 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
                   <div class="product-name">${product.name}</div>
                   <div class="product-price">₹${product.price}</div>
                   <div class="product-actions">
-                    <button class="add-cart-btn" @click=${(e: Event) => this.addToCart(product, e)}>
-                      🛒 Add to Cart
+                    <button class="add-cart-btn" 
+                            @click=${(e: Event) => this.addToCart(product, e)}
+                            ?disabled=${this.addingToCart.has(product.id)}>
+                      ${this.addingToCart.has(product.id) ? '⏳ Adding...' : '🛒 Add to Cart'}
                     </button>
                   </div>
                 </div>
@@ -599,6 +658,7 @@ ADDITIONAL FLOW FOR MORE PRODUCTS: If the user says "more products," "add more,"
               <div class="celebration-icon">🎉</div>
               <div class="celebration-text">Added to Cart!</div>
               <div class="celebration-product">${this.addedProduct}</div>
+              <div style="font-size: 14px; opacity: 0.8; margin-top: 10px;">✅ AI has been notified</div>
               <div>Tap anywhere to continue</div>
             </div>
           </div>
