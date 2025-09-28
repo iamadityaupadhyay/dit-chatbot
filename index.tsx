@@ -82,14 +82,14 @@ export class GdmLiveAudio extends LitElement {
     
     .product-overlay {
       position: absolute;
-      top: 20px;
-      left: 20px;
-      right: 20px;
+      top: 15px;
+      left: 15px;
+      right: 15px;
       z-index: 15;
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      max-height: 60vh;
+      gap: 8px;
+      max-height: 65vh;
       overflow-y: auto;
       animation: slideDown 0.5s ease-out;
     }
@@ -106,30 +106,31 @@ export class GdmLiveAudio extends LitElement {
     }
     
     .product-header {
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(0, 0, 0, 0.3);
       color: white;
-      padding: 15px;
-      border-radius: 15px;
+      padding: 12px;
+      border-radius: 12px;
       text-align: center;
-      font-weight: bold;
-      font-size: 18px;
-      backdrop-filter: blur(15px);
-      border: 2px solid rgba(255, 255, 255, 0.3);
+      font-weight: 600;
+      font-size: 16px;
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
     }
     
     .product-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 15px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
     }
     
     .product-bubble {
-      background: linear-gradient(135deg, rgba(255, 255, 255, 0.85), rgba(240, 240, 255, 0.75));
-      border-radius: 20px;
-      padding: 20px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-      backdrop-filter: blur(15px);
-      border: 2px solid rgba(255, 255, 255, 0.4);
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(240, 240, 255, 0.1));
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
       transition: all 0.3s ease;
       animation: bubbleIn 0.6s ease-out forwards;
       opacity: 0;
@@ -144,106 +145,119 @@ export class GdmLiveAudio extends LitElement {
     }
     
     .product-bubble:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-      background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(250, 250, 255, 0.85));
+      transform: translateY(-3px);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.25), rgba(250, 250, 255, 0.2));
+      border: 1px solid rgba(255, 255, 255, 0.3);
     }
     
     .product-name {
-      font-size: 18px;
-      font-weight: bold;
-      color: #333;
-      margin-bottom: 8px;
-      line-height: 1.3;
+      font-size: 15px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.95);
+      margin-bottom: 6px;
+      line-height: 1.2;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
     }
     
     .product-price {
-      font-size: 20px;
+      font-size: 18px;
       font-weight: bold;
-      color: #007bff;
-      margin-bottom: 10px;
+      color: rgba(0, 123, 255, 0.9);
+      margin-bottom: 8px;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
     }
     
     .product-id {
-      font-size: 12px;
-      color: #666;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.6);
       opacity: 0.8;
     }
     
     .product-image {
-      width: 60px;
-      height: 60px;
-      border-radius: 10px;
+      width: 45px;
+      height: 45px;
+      border-radius: 8px;
       object-fit: cover;
-      margin-bottom: 10px;
-      border: 2px solid rgba(0, 123, 255, 0.2);
+      margin-bottom: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      float: right;
+      margin-left: 10px;
+      margin-top: 0;
     }
     
     .close-products {
       position: absolute;
-      top: 10px;
-      right: 10px;
-      background: rgba(255, 0, 0, 0.8);
+      top: 8px;
+      right: 8px;
+      background: rgba(255, 0, 0, 0.6);
       color: white;
       border: none;
       border-radius: 50%;
-      width: 30px;
-      height: 30px;
+      width: 26px;
+      height: 26px;
       cursor: pointer;
-      font-size: 16px;
+      font-size: 14px;
       display: flex;
       align-items: center;
       justify-content: center;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
     
     .close-products:hover {
-      background: rgba(255, 0, 0, 1);
+      background: rgba(255, 0, 0, 0.8);
     }
     
     .product-actions {
       display: flex;
-      gap: 10px;
-      margin-top: 15px;
+      gap: 6px;
+      margin-top: 12px;
+      clear: both;
     }
     
     .select-btn {
       flex: 1;
-      background: linear-gradient(135deg, #007bff, #0056b3);
+      background: linear-gradient(135deg, rgba(0, 123, 255, 0.8), rgba(0, 86, 179, 0.8));
       color: white;
       border: none;
-      border-radius: 10px;
-      padding: 10px;
-      font-weight: bold;
+      border-radius: 8px;
+      padding: 8px 6px;
+      font-weight: 600;
       cursor: pointer;
       transition: all 0.3s ease;
-      font-size: 14px;
+      font-size: 12px;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
     
     .select-btn:hover {
-      background: linear-gradient(135deg, #0056b3, #003d82);
-      transform: translateY(-2px);
+      background: linear-gradient(135deg, rgba(0, 86, 179, 0.9), rgba(0, 61, 130, 0.9));
+      transform: translateY(-1px);
     }
     
     .add-cart-btn {
       flex: 1;
-      background: linear-gradient(135deg, #28a745, #1e7e34);
+      background: linear-gradient(135deg, rgba(40, 167, 69, 0.8), rgba(30, 126, 52, 0.8));
       color: white;
       border: none;
-      border-radius: 10px;
-      padding: 10px;
-      font-weight: bold;
+      border-radius: 8px;
+      padding: 8px 6px;
+      font-weight: 600;
       cursor: pointer;
       transition: all 0.3s ease;
-      font-size: 14px;
+      font-size: 12px;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
     
     .add-cart-btn:hover {
-      background: linear-gradient(135deg, #1e7e34, #155724);
-      transform: translateY(-2px);
+      background: linear-gradient(135deg, rgba(30, 126, 52, 0.9), rgba(21, 87, 36, 0.9));
+      transform: translateY(-1px);
     }
     
     .add-cart-btn:disabled {
-      background: linear-gradient(135deg, #6c757d, #5a6268);
+      background: linear-gradient(135deg, rgba(108, 117, 125, 0.6), rgba(90, 98, 104, 0.6));
       cursor: not-allowed;
       transform: none;
     }
@@ -634,11 +648,13 @@ MANUAL CART ADDITIONS: When you receive a tool response indicating a manual cart
               ${this.products.map((product, index) => html`
                 <div class="product-bubble" 
                      style="animation-delay: ${index * 0.1}s">
-                  ${product.image ? html`
-                    <img class="product-image" src="${product.image}" alt="${product.name}" />
-                  ` : ''}
-                  <div class="product-name">${product.name}</div>
-                  <div class="product-price">₹${product.price}</div>
+                  <div style="position: relative;">
+                    ${product.image ? html`
+                      <img class="product-image" src="${product.image}" alt="${product.name}" />
+                    ` : ''}
+                    <div class="product-name">${product.name}</div>
+                    <div class="product-price">₹${product.price}</div>
+                  </div>
                   <div class="product-actions">
                     <button class="add-cart-btn" 
                             @click=${(e: Event) => this.addToCart(product, e)}
@@ -658,8 +674,6 @@ MANUAL CART ADDITIONS: When you receive a tool response indicating a manual cart
               <div class="celebration-icon">🎉</div>
               <div class="celebration-text">Added to Cart!</div>
               <div class="celebration-product">${this.addedProduct}</div>
-              <div style="font-size: 14px; opacity: 0.8; margin-top: 10px;">✅ AI has been notified</div>
-              <div>Tap anywhere to continue</div>
             </div>
           </div>
         ` : ''}
