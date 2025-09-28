@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "custom": "vite --host --port 3000 custom-index.html",
     "build": "vite build",
     "preview": "vite preview"
   },
