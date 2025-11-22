@@ -49,7 +49,7 @@ export class TextToSpeechService {
           text: processedText,
           voiceId: this.config.voiceId,
           model: "gen2",
-          modelVersion: "latest"  
+          modelVersion: "GEN2"  
         })
       });
 
