@@ -48,7 +48,7 @@ export class TextToSpeechService {
         data: JSON.stringify({
           text: processedText,
           voiceId: this.config.voiceId,
-          model: "GEN2"
+          model: "gen2"
         })
       });
 
