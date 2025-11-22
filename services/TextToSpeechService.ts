@@ -20,7 +20,7 @@ export class TextToSpeechService {
     this.outputNode = outputNode;
     this.config = {
       apiKey: "ap2_10a62c3e-ef81-4e04-996e-191e4fdab276",
-      voiceId: "en-US-natalie",
+      voiceId: "ira",
       retryAttempts: 3,
       useSSML: false,
       ...config
